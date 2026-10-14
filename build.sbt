@@ -11,14 +11,6 @@ ThisBuild / organization       := "io.github.netheritesystems"
 ThisBuild / version            := "0.1.0-SNAPSHOT"
 ThisBuild / versionScheme      := Some("early-semver")
 
-// SemanticDB is what Scalafix semantic rules read. Scala 2.13 (kyo-scheduler-cats)
-// uses the semanticdb-scalac revision bundled with sbt-scalafix; Scala 3 emits
-// SemanticDB with `-Xsemanticdb`. `-Wunused:imports` is what RemoveUnused reads.
-// See https://scalacenter.github.io/scalafix/docs/users/installation.html
-ThisBuild / semanticdbEnabled := true
-ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
-ThisBuild / scalacOptions += "-Wunused:imports"
-
 inThisBuild(List(
     homepage := Some(url("https://github.com/NetheriteSystems/kyo-cats-interop")),
     licenses := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))

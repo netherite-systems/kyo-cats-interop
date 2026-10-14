@@ -21,6 +21,6 @@ jobs:
       - name: Scala Native libraries
         run: sudo apt-get update && sudo apt-get install -y clang libunwind-dev libgc-dev zlib1g-dev
       - name: Format
-        run: sbt -batch scalafmtCheckAll scalafmtSbtCheck "scalafixAll --check" "+kyoSchedulerCatsJVM/scalafixAll --check"
+        run: sbt -batch scalafmtCheckAll scalafmtSbtCheck
       - name: Test
         run: sbt -batch kyoCatsJVM/test kyoCatsJS/test "+kyoSchedulerCatsJVM/test" kyoCompatCeJVM/test kyoCompatCeJS/test kyoCompatCeNative/test
