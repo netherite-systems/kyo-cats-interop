@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Scala Native libraries
+        run: sudo apt-get update && sudo apt-get install -y clang libunwind-dev libgc-dev zlib1g-dev
+      - name: Test
+        run: sbt -batch kyoCatsJVM/test kyoCatsJS/test "+kyoSchedulerCatsJVM/test" kyoCompatCeJVM/test kyoCompatCeJS/test kyoCompatCeNative/test
