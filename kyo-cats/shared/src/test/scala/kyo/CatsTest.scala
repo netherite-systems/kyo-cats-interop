@@ -140,7 +140,7 @@ class CatsTest extends kyo.test.Test[Any]:
                 "both" in runCatsIO {
                     val started = new CountDownLatch(2)
                     val done    = new CountDownLatch(2)
-                    val v =
+                    val v       =
                         for
                             _ <- Cats.get(catsLoop(started, done))
                             _ <- Fiber.initUnscoped(kyoLoop(started, done))
@@ -156,8 +156,8 @@ class CatsTest extends kyo.test.Test[Any]:
                 }
 
                 "parallel loops" in runCatsIO {
-                    val started = new CountDownLatch(2)
-                    val done    = new CountDownLatch(2)
+                    val started        = new CountDownLatch(2)
+                    val done           = new CountDownLatch(2)
                     def parallelEffect =
                         Cats.run {
                             val loop1 = Cats.get(catsLoop(started, done))
@@ -175,8 +175,8 @@ class CatsTest extends kyo.test.Test[Any]:
                 }
 
                 "race loops" in runCatsIO {
-                    val started = new CountDownLatch(2)
-                    val done    = new CountDownLatch(2)
+                    val started    = new CountDownLatch(2)
+                    val done       = new CountDownLatch(2)
                     def raceEffect =
                         Cats.run {
                             val loop1 = Cats.get(catsLoop(started, done))
@@ -212,7 +212,7 @@ class CatsTest extends kyo.test.Test[Any]:
                 "both" in runKyo {
                     val started = new CountDownLatch(2)
                     val done    = new CountDownLatch(2)
-                    val v =
+                    val v       =
                         for
                             _ <- Cats.get(catsLoop(started, done))
                             _ <- kyoLoop(started, done)
@@ -228,8 +228,8 @@ class CatsTest extends kyo.test.Test[Any]:
                 }
 
                 "parallel loops" in runKyo {
-                    val started = new CountDownLatch(2)
-                    val done    = new CountDownLatch(2)
+                    val started        = new CountDownLatch(2)
+                    val done           = new CountDownLatch(2)
                     def parallelEffect =
                         val loop1 = Cats.get(catsLoop(started, done))
                         val loop2 = kyoLoop(started, done)
@@ -246,8 +246,8 @@ class CatsTest extends kyo.test.Test[Any]:
                 }
 
                 "race loops" in runKyo {
-                    val started = new CountDownLatch(2)
-                    val done    = new CountDownLatch(2)
+                    val started    = new CountDownLatch(2)
+                    val done       = new CountDownLatch(2)
                     def raceEffect =
                         val loop1 = Cats.get(catsLoop(started, done))
                         val loop2 = kyoLoop(started, done)

@@ -4,8 +4,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kyo.compat.*
 import scala.concurrent.duration.*
-import scala.util.Failure
-import scala.util.Success
 class LatchTest extends CompatTest:
     "init with n=0 releases immediately" in run {
         // A latch initialised at 0 is already released; await returns

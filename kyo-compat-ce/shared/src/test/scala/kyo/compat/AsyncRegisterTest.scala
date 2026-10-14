@@ -3,7 +3,6 @@ package kyo.compat
 import java.util.concurrent.atomic.AtomicInteger
 import kyo.compat.*
 import scala.concurrent.Future as SFuture
-import scala.concurrent.duration.*
 import scala.util.Failure
 import scala.util.Success
 

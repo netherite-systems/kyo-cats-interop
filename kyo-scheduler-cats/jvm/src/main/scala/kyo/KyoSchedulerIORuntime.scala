@@ -18,7 +18,7 @@ object KyoSchedulerIORuntime {
         // `sleep` is the Cats Effect timer hook used by `IO.sleep`.
         // See https://typelevel.org/cats-effect/api/3.x/cats/effect/unsafe/Scheduler.html
         val scheduler = new cats.effect.unsafe.Scheduler {
-            val scheduledExecutor = Executors.newScheduledThreadPool(2)
+            val scheduledExecutor                                      = Executors.newScheduledThreadPool(2)
             def sleep(delay: FiniteDuration, task: Runnable): Runnable = {
                 val t = scheduledExecutor.schedule(task, delay.toNanos, TimeUnit.NANOSECONDS)
                 () => {

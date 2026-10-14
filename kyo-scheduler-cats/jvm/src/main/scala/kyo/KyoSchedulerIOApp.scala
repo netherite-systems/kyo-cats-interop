@@ -3,7 +3,6 @@ package kyo
 import cats.effect.ExitCode
 import cats.effect.IO
 import cats.effect.IOApp
-import cats.effect.unsafe.IORuntime
 
 /** Cats-Effect [[cats.effect.IOApp]] variant that runs on the Kyo scheduler.
   *

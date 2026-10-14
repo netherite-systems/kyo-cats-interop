@@ -3,24 +3,21 @@ package kyo.compat
 import cats.effect.IO
 import cats.effect.kernel.Ref
 
-/**
-  * Uses `cats.effect.kernel.Ref[IO, Long]` through [[CAtomicRef]], which provides every operation.
-  
+/** Uses `cats.effect.kernel.Ref[IO, Long]` through [[CAtomicRef]], which provides every operation.
+  *
   * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
- */
+  */
 type CAtomicLong = CAtomicRef[Long]
 
-object CAtomicLong {
+object CAtomicLong:
 
-  /**
-    * Allocates a fresh atomic long initialized to `v`.
-    */
-  inline def init(inline v: Long): CIO[CAtomicLong] = CAtomicRef.init(v)
+    /** Allocates a fresh atomic long initialized to `v`.
+      */
+    inline def init(inline v: Long): CIO[CAtomicLong] = CAtomicRef.init(v)
 
-  /**
-    * Wraps a native `cats.effect.kernel.Ref[IO, Long]` as a `CAtomicLong`. The conversion is the identity on the carrier.
-    
-    * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
- */
-  inline def lift(inline u: Ref[IO, Long]): CAtomicLong = CAtomicRef.lift(u)
-}
+    /** Wraps a native `cats.effect.kernel.Ref[IO, Long]` as a `CAtomicLong`. The conversion is the identity on the carrier.
+      *
+      * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
+      */
+    inline def lift(inline u: Ref[IO, Long]): CAtomicLong = CAtomicRef.lift(u)
+end CAtomicLong

@@ -6,7 +6,6 @@ import java.util.concurrent.atomic.AtomicReference
 import kyo.compat.*
 import scala.concurrent.duration.*
 import scala.util.Failure
-import scala.util.Success
 
 // Local error sentinels for acquireReleaseWith/ensure failure-path tests.
 case object AcquireErr extends Exception("acquire-err")

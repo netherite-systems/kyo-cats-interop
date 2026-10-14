@@ -2,56 +2,48 @@ package kyo.compat
 
 import cats.effect.IOLocal
 
-/**
-  * Underlying carrier is `cats.effect.IOLocal[A]`, a fiber-scoped value. Cats Effect has no `Frame` / `Trace` to propagate. `lift` and
+/** Underlying carrier is `cats.effect.IOLocal[A]`, a fiber-scoped value. Cats Effect has no `Frame` / `Trace` to propagate. `lift` and
   * `lower` are identity since the carrier is already a native CE local. `init` allocates a fresh `IOLocal` inside `IO`, so the allocation
   * is deferred to effect-evaluation time. `let` and `update` use `IO.bracket` to install the new value and revert the prior one on every
   * exit path.
-  
+  *
   * See https://typelevel.org/cats-effect/api/3.x/cats/effect/IOLocal.html
- */
+  */
 opaque type CLocal[A] = IOLocal[A]
 
-object CLocal {
+object CLocal:
 
-  /**
-    * Allocates a fresh fiber-local seeded with `default`.
-    */
-  inline def init[A](inline default: A): CIO[CLocal[A]] =
-    CIO.lift(IOLocal[A](default))
+    /** Allocates a fresh fiber-local seeded with `default`.
+      */
+    inline def init[A](inline default: A): CIO[CLocal[A]] =
+        CIO.lift(IOLocal[A](default))
 
-  /**
-    * Wraps a native `cats.effect.IOLocal` as a `CLocal`. The conversion is the identity on the carrier.
-    
-    * See https://typelevel.org/cats-effect/api/3.x/cats/effect/IOLocal.html
- */
-  inline def lift[A](inline u: IOLocal[A]): CLocal[A] = u
-
-  extension [A](inline self: CLocal[A]) {
-
-    /**
-      * Unwraps to the native `cats.effect.IOLocal`. The conversion is the identity on the carrier.
-      
+    /** Wraps a native `cats.effect.IOLocal` as a `CLocal`. The conversion is the identity on the carrier.
+      *
       * See https://typelevel.org/cats-effect/api/3.x/cats/effect/IOLocal.html
- */
-    inline def lower: IOLocal[A] = self
-
-    /**
-      * Reads the current fiber's value.
       */
-    inline def get: CIO[A] = CIO.lift(self.get)
+    inline def lift[A](inline u: IOLocal[A]): CLocal[A] = u
 
-    /**
-      * Installs `v` for the duration of `c`, then reverts.
-      */
-    inline def let[B](inline v: A)(inline c: CIO[B]): CIO[B] =
-      CIO.lift(self.getAndSet(v).bracket(_ => c.lower)(prior => self.set(prior)))
+    extension [A](inline self: CLocal[A])
 
-    /**
-      * Reads the current value, applies `f`, installs the result for the duration of `c`, then reverts.
-      */
-    inline def update[B](inline f: A => A)(inline c: CIO[B]): CIO[B] =
-      CIO.lift(self.get.flatMap(cur => self.let(f(cur))(c).lower))
+        /** Unwraps to the native `cats.effect.IOLocal`. The conversion is the identity on the carrier.
+          *
+          * See https://typelevel.org/cats-effect/api/3.x/cats/effect/IOLocal.html
+          */
+        inline def lower: IOLocal[A] = self
 
-  }
-}
+        /** Reads the current fiber's value.
+          */
+        inline def get: CIO[A] = CIO.lift(self.get)
+
+        /** Installs `v` for the duration of `c`, then reverts.
+          */
+        inline def let[B](inline v: A)(inline c: CIO[B]): CIO[B] =
+            CIO.lift(self.getAndSet(v).bracket(_ => c.lower)(prior => self.set(prior)))
+
+        /** Reads the current value, applies `f`, installs the result for the duration of `c`, then reverts.
+          */
+        inline def update[B](inline f: A => A)(inline c: CIO[B]): CIO[B] =
+            CIO.lift(self.get.flatMap(cur => self.let(f(cur))(c).lower))
+    end extension
+end CLocal

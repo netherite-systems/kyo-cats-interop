@@ -1,15 +1,23 @@
-val scala3Version    = "3.9.0"
-val scala213Version  = "2.13.18"
-val kyoVersion       = "1.0.0-RC7"
+val scala3Version     = "3.9.0"
+val scala213Version   = "2.13.18"
+val kyoVersion        = "1.0.0-RC7"
 val catsEffectVersion = "3.7.1"
-val fs2Version       = "3.14.0"
-val scalaTestVersion = "3.2.20"
+val fs2Version        = "3.14.0"
+val scalaTestVersion  = "3.2.20"
 
 ThisBuild / scalaVersion       := scala3Version
 ThisBuild / crossScalaVersions := Seq(scala3Version)
 ThisBuild / organization       := "io.github.netheritesystems"
 ThisBuild / version            := "0.1.0-SNAPSHOT"
 ThisBuild / versionScheme      := Some("early-semver")
+
+// SemanticDB is what Scalafix semantic rules read. Scala 2.13 (kyo-scheduler-cats)
+// uses the semanticdb-scalac revision bundled with sbt-scalafix; Scala 3 emits
+// SemanticDB with `-Xsemanticdb`. `-Wunused:imports` is what RemoveUnused reads.
+// See https://scalacenter.github.io/scalafix/docs/users/installation.html
+ThisBuild / semanticdbEnabled := true
+ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
+ThisBuild / scalacOptions += "-Wunused:imports"
 
 inThisBuild(List(
     homepage := Some(url("https://github.com/NetheriteSystems/kyo-cats-interop")),
@@ -41,8 +49,8 @@ lazy val kyoCats = crossProject(JVMPlatform, JSPlatform)
         name               := "kyo-cats",
         crossScalaVersions := Seq(scala3Version),
         libraryDependencies ++= Seq(
-            "io.getkyo"     %%% "kyo-core"    % kyoVersion,
-            "org.typelevel" %%% "cats-effect" % catsEffectVersion,
+            "io.getkyo"     %%% "kyo-core"        % kyoVersion,
+            "org.typelevel" %%% "cats-effect"     % catsEffectVersion,
             "io.getkyo"     %%% "kyo-test-api"    % kyoVersion % Test,
             "io.getkyo"     %%% "kyo-test-runner" % kyoVersion % Test
         )

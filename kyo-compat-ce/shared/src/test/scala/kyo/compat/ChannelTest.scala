@@ -1,11 +1,8 @@
 package kyo.compat
 
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicInteger
 import kyo.compat.*
 import scala.concurrent.duration.*
-import scala.util.Failure
-import scala.util.Success
 
 class ChannelTest extends CompatTest:
 

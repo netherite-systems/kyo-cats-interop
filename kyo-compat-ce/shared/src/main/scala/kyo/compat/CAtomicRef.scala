@@ -3,106 +3,87 @@ package kyo.compat
 import cats.effect.IO
 import cats.effect.kernel.Ref
 
-/**
-  * Uses `cats.effect.kernel.Ref[IO, A]`. Cats Effect has no `Frame` or `Trace` to propagate. `lift` and `lower` return the existing Cats
+/** Uses `cats.effect.kernel.Ref[IO, A]`. Cats Effect has no `Frame` or `Trace` to propagate. `lift` and `lower` return the existing Cats
   * Effect ref. `compareAndSet` uses `Ref.modify` because Cats Effect does not provide a native compare-and-set operation.
-  
+  *
   * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
- */
+  */
 opaque type CAtomicRef[A] = Ref[IO, A]
 
-object CAtomicRef {
+object CAtomicRef:
 
-  /**
-    * Allocates a fresh atomic reference initialized to `a`.
-    */
-  inline def init[A](inline a: A): CIO[CAtomicRef[A]] =
-    CIO.lift(Ref.of[IO, A](a))
+    /** Allocates a fresh atomic reference initialized to `a`.
+      */
+    inline def init[A](inline a: A): CIO[CAtomicRef[A]] =
+        CIO.lift(Ref.of[IO, A](a))
 
-  /**
-    * Wraps a native `cats.effect.kernel.Ref[IO, A]` as a `CAtomicRef`. The conversion is the identity on the carrier.
-    
-    * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
- */
-  inline def lift[A](inline u: Ref[IO, A]): CAtomicRef[A] = u
-
-  extension [A](inline self: CAtomicRef[A]) {
-
-    /**
-      * Unwraps to the native `cats.effect.kernel.Ref[IO, A]`. The conversion is the identity on the carrier.
-      
+    /** Wraps a native `cats.effect.kernel.Ref[IO, A]` as a `CAtomicRef`. The conversion is the identity on the carrier.
+      *
       * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
- */
-    inline def lower: Ref[IO, A] = self
-
-    /**
-      * Reads the current value.
       */
-    inline def get: CIO[A] = CIO.lift(self.get)
+    inline def lift[A](inline u: Ref[IO, A]): CAtomicRef[A] = u
 
-    /**
-      * Atomically sets the value to `a`.
-      */
-    inline def set(inline a: A): CIO[Unit] = CIO.lift(self.set(a))
+    extension [A](inline self: CAtomicRef[A])
 
-    /**
-      * Atomically sets the value to `a` and returns the previous value.
-      */
-    inline def getAndSet(inline a: A): CIO[A] = CIO.lift(self.getAndSet(a))
+        /** Unwraps to the native `cats.effect.kernel.Ref[IO, A]`. The conversion is the identity on the carrier.
+          *
+          * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
+          */
+        inline def lower: Ref[IO, A] = self
 
-    /**
-      * Atomically applies `f` to the current value and returns the new value.
-      */
-    inline def updateAndGet(inline f: A => A): CIO[A] = CIO.lift(self.updateAndGet(f))
+        /** Reads the current value.
+          */
+        inline def get: CIO[A] = CIO.lift(self.get)
 
-    /**
-      * Atomically applies `f` to the current value and returns the previous value.
-      */
-    inline def getAndUpdate(inline f: A => A): CIO[A] = CIO.lift(self.getAndUpdate(f))
+        /** Atomically sets the value to `a`.
+          */
+        inline def set(inline a: A): CIO[Unit] = CIO.lift(self.set(a))
 
-    /**
-      * Atomic compare-and-set: replaces `expected` with `updated` iff the current value equals `expected`.
-      */
-    inline def compareAndSet(inline expected: A, inline updated: A): CIO[Boolean] =
-      CIO.lift(self.modify { cur =>
-        given CanEqual[A, A] = CanEqual.derived
-        if (cur == expected) (updated, true) else (cur, false)
-      })
+        /** Atomically sets the value to `a` and returns the previous value.
+          */
+        inline def getAndSet(inline a: A): CIO[A] = CIO.lift(self.getAndSet(a))
 
-  }
+        /** Atomically applies `f` to the current value and returns the new value.
+          */
+        inline def updateAndGet(inline f: A => A): CIO[A] = CIO.lift(self.updateAndGet(f))
 
-  extension [A](inline self: CAtomicRef[A])(using n: Numeric[A]) {
+        /** Atomically applies `f` to the current value and returns the previous value.
+          */
+        inline def getAndUpdate(inline f: A => A): CIO[A] = CIO.lift(self.getAndUpdate(f))
 
-    /**
-      * Atomically increments by 1 and returns the new value.
-      */
-    inline def incrementAndGet: CIO[A] = CIO.lift(self.updateAndGet(n.plus(_, n.one)))
+        /** Atomic compare-and-set: replaces `expected` with `updated` iff the current value equals `expected`.
+          */
+        inline def compareAndSet(inline expected: A, inline updated: A): CIO[Boolean] =
+            CIO.lift(self.modify { cur =>
+                given CanEqual[A, A] = CanEqual.derived
+                if cur == expected then (updated, true) else (cur, false)
+            })
+    end extension
 
-    /**
-      * Atomically increments by 1 and returns the previous value.
-      */
-    inline def getAndIncrement: CIO[A] = CIO.lift(self.getAndUpdate(n.plus(_, n.one)))
+    extension [A](inline self: CAtomicRef[A])(using n: Numeric[A])
 
-    /**
-      * Atomically decrements by 1 and returns the new value.
-      */
-    inline def decrementAndGet: CIO[A] = CIO.lift(self.updateAndGet(n.minus(_, n.one)))
+        /** Atomically increments by 1 and returns the new value.
+          */
+        inline def incrementAndGet: CIO[A] = CIO.lift(self.updateAndGet(n.plus(_, n.one)))
 
-    /**
-      * Atomically decrements by 1 and returns the previous value.
-      */
-    inline def getAndDecrement: CIO[A] = CIO.lift(self.getAndUpdate(n.minus(_, n.one)))
+        /** Atomically increments by 1 and returns the previous value.
+          */
+        inline def getAndIncrement: CIO[A] = CIO.lift(self.getAndUpdate(n.plus(_, n.one)))
 
-    /**
-      * Atomically adds `delta` and returns the new value.
-      */
-    inline def addAndGet(inline delta: A): CIO[A] = CIO.lift(self.updateAndGet(n.plus(_, delta)))
+        /** Atomically decrements by 1 and returns the new value.
+          */
+        inline def decrementAndGet: CIO[A] = CIO.lift(self.updateAndGet(n.minus(_, n.one)))
 
-    /**
-      * Atomically adds `delta` and returns the previous value.
-      */
-    inline def getAndAdd(inline delta: A): CIO[A] = CIO.lift(self.getAndUpdate(n.plus(_, delta)))
+        /** Atomically decrements by 1 and returns the previous value.
+          */
+        inline def getAndDecrement: CIO[A] = CIO.lift(self.getAndUpdate(n.minus(_, n.one)))
 
-  }
+        /** Atomically adds `delta` and returns the new value.
+          */
+        inline def addAndGet(inline delta: A): CIO[A] = CIO.lift(self.updateAndGet(n.plus(_, delta)))
 
-}
+        /** Atomically adds `delta` and returns the previous value.
+          */
+        inline def getAndAdd(inline delta: A): CIO[A] = CIO.lift(self.getAndUpdate(n.plus(_, delta)))
+    end extension
+end CAtomicRef

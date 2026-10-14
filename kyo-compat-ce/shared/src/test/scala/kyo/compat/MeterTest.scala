@@ -4,8 +4,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kyo.compat.*
 import scala.concurrent.duration.*
-import scala.util.Failure
-import scala.util.Success
 class MeterTest extends CompatTest:
     "run acquires and releases the permit" in run {
         // After run completes, the permit is back. We assert availablePermits

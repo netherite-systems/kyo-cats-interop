@@ -5,7 +5,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import kyo.compat.*
 import scala.concurrent.duration.*
 import scala.util.Failure
-import scala.util.Success
 class TimeTest extends CompatTest:
     "sleep delays without crashing" in run {
         // Verify sleep returns Unit; that the suspension is real (not a no-op) is covered below.
