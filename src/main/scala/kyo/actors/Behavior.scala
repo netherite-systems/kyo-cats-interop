@@ -64,7 +64,11 @@ object Behavior:
     /** Discard user messages and keep running, so the actor can still be watched and stopped. */
     def ignore[M]: Behavior[M] = Inst.Ignore[M]()
 
-    /** Restart, stop, resume, or escalate failures of `behavior` according to `strategy`. */
+    /** Restart, stop, resume, or escalate failures of `behavior` according to `strategy`.
+      *
+      * The strategy stays in place when a handler returns a new behavior. It is installed again
+      * from this value on restart.
+      */
     def supervise[M](behavior: Behavior[M]): Supervise[M] = Supervise(behavior)
 
     /** Run `handle` for [[Signal]]s. The handler replaces any signal handler wrapped inside `behavior`. */

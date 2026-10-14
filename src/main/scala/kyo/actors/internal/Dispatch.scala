@@ -185,8 +185,7 @@ private[actors] object Dispatch:
         restarts: Int
     )(using Frame): Unit < (Actor.Context[Mail] & Async & Scope) =
         val (core, strategies) = peel(behavior)
-        val propsStrategy      = strategies.last
-        Scope.run(runOne(cell, ref, context, core, strategies, propsStrategy, restarts)).flatMap {
+        Scope.run(runOne(cell, ref, context, core, strategies, restarts)).flatMap {
             case Outcome.Restart() =>
                 // `Scope.run` already stopped children spawned inside the incarnation. This also
                 // stops children linked through `spawn`.
@@ -206,40 +205,37 @@ private[actors] object Dispatch:
         context: ContextImpl[M],
         behavior: Behavior[M],
         strategies: List[SupervisorStrategy],
-        propsStrategy: SupervisorStrategy,
         restarts: Int
     )(using Frame): Outcome[M] < (Actor.Context[Mail] & Async & Scope) =
-        cell.noteProps(propsStrategy).andThen {
-            cell.setStrategies(strategies, restarts).andThen {
-                Abort.run[Any] {
-                    expand(context, behavior, Absent).flatMap { ready =>
-                        cell.remember(ready).andThen {
-                            arm(cell, ref).andThen {
-                                Actor.receiveLoop[Mail](Outcome.Continue(ready): Outcome[M]) { (mail, state) =>
-                                    state match
-                                        case Outcome.Continue(current) =>
-                                            onMail(cell, ref, context, current, mail).map {
-                                                case next: Outcome.Continue[M] => Loop.continue(next)
-                                                case done                      => Loop.done(done)
-                                            }
-                                        case done => Loop.done(done)
-                                }
+        cell.setStrategies(strategies, restarts).andThen {
+            Abort.run[Any] {
+                expand(context, behavior, Absent).flatMap { ready =>
+                    cell.remember(ready).andThen {
+                        arm(cell, ref).andThen {
+                            Actor.receiveLoop[Mail](Outcome.Continue(ready): Outcome[M]) { (mail, state) =>
+                                state match
+                                    case Outcome.Continue(current) =>
+                                        onMail(cell, ref, context, current, mail).map {
+                                            case next: Outcome.Continue[M] => Loop.continue(next)
+                                            case done                      => Loop.done(done)
+                                        }
+                                    case done => Loop.done(done)
                             }
                         }
                     }
-                }.flatMap { result =>
-                    result match
-                        case Result.Success(outcome: Outcome.Continue[M]) =>
-                            // Mailbox closed: the receive loop finished without an explicit halt.
-                            // https://getkyo.io/latest/kyo-actor/
-                            Outcome.Halt[M](Absent)
-                        case Result.Success(outcome) => outcome
-                        case Result.Failure(error)   =>
-                            decide(cell, applyFailure(strategies, failureCause(error), restarts), Outcome.Restart[M]())
-                        case Result.Panic(_: Interrupted) => Outcome.Halt[M](Absent)
-                        case Result.Panic(error)          =>
-                            decide(cell, applyFailure(strategies, error, restarts), Outcome.Restart[M]())
                 }
+            }.flatMap { result =>
+                result match
+                    case Result.Success(outcome: Outcome.Continue[M]) =>
+                        // Mailbox closed: the receive loop finished without an explicit halt.
+                        // https://getkyo.io/latest/kyo-actor/
+                        Outcome.Halt[M](Absent)
+                    case Result.Success(outcome) => outcome
+                    case Result.Failure(error)   =>
+                        decide(cell, applyFailure(strategies, failureCause(error), restarts), Outcome.Restart[M]())
+                    case Result.Panic(_: Interrupted) => Outcome.Halt[M](Absent)
+                    case Result.Panic(error)          =>
+                        decide(cell, applyFailure(strategies, error, restarts), Outcome.Restart[M]())
             }
         }
     end runOne
@@ -264,13 +260,11 @@ private[actors] object Dispatch:
                             // `tell` is the only producer of `Mail.User`, and it enqueues this actor's `M`.
                             onMessage(context, message.asInstanceOf[M])
                         case Ready.Ignore(_) => Behavior.same[M]
-                effect.flatMap { next =>
-                    Abort.run[Any](settle(cell, context, ready, next)).flatMap { result =>
-                        result match
-                            case Result.Success(outcome) => rememberOutcome(cell, ref, outcome)
-                            case Result.Failure(error)   => failureOutcome(cell, ready, failureCause(error))
-                            case Result.Panic(error)     => failureOutcome(cell, ready, error)
-                    }
+                Abort.run[Any](effect.flatMap(next => settle(context, ready, next))).flatMap { result =>
+                    result match
+                        case Result.Success(outcome) => rememberOutcome(cell, ref, outcome)
+                        case Result.Failure(error)   => failureOutcome(cell, ready, failureCause(error))
+                        case Result.Panic(error)     => failureOutcome(cell, ready, error)
                 }
         end match
     end onMail
@@ -283,7 +277,7 @@ private[actors] object Dispatch:
     )(using Frame): Outcome[M] < Behavior.Effect =
         ready.signals match
             case Present(handler) =>
-                Abort.run[Any](handler(context, signal).flatMap(next => settle(cell, context, ready, next))).flatMap {
+                Abort.run[Any](handler(context, signal).flatMap(next => settle(context, ready, next))).flatMap {
                     case Result.Success(outcome) => outcome
                     case Result.Failure(error)   => failureOutcome(cell, ready, failureCause(error))
                     case Result.Panic(error)     => failureOutcome(cell, ready, error)
@@ -343,7 +337,6 @@ private[actors] object Dispatch:
     end applyFailure
 
     private def settle[M](
-        cell: Cell[M],
         context: ContextImpl[M],
         current: Ready[M],
         next: Behavior[M]
@@ -351,13 +344,10 @@ private[actors] object Dispatch:
         next match
             case _: Behavior.Inst.Same[?]    => Outcome.Continue(current)
             case _: Behavior.Inst.Stopped[?] => Outcome.Halt[M](Absent)
-            case other                       =>
-                val (core, userStrategies) = peel(other)
-                cell.propsStrategy.flatMap { props =>
-                    expand(context, core, Absent).flatMap { ready =>
-                        cell.setStrategyList(userStrategies :+ props).andThen(Outcome.Continue(ready))
-                    }
-                }
+            // Supervisors peeled for this incarnation stay in place when the handler returns a new behavior.
+            // https://pekko.apache.org/docs/pekko/current/typed/fault-tolerance.html
+            case other =>
+                expand(context, other, Absent).map(ready => Outcome.Continue(ready))
     end settle
 
     private def expand[M](
@@ -468,8 +458,7 @@ private[actors] object Dispatch:
         val timeoutGeneration: AtomicInt,
         val terminated: Promise[Unit, Abort[Nothing]],
         val strategies: AtomicRef[List[SupervisorStrategy]],
-        val restarts: AtomicInt,
-        val props: AtomicRef[SupervisorStrategy]
+        val restarts: AtomicInt
     ):
         val id: AnyRef = this
 
@@ -483,14 +472,8 @@ private[actors] object Dispatch:
 
         def remember(ready: Ready[M])(using Frame): Unit < Sync = signals.set(ready.signals)
 
-        def noteProps(strategy: SupervisorStrategy)(using Frame): Unit < Sync = props.set(strategy)
-
-        def propsStrategy(using Frame): SupervisorStrategy < Sync = props.get
-
         def setStrategies(next: List[SupervisorStrategy], restartCount: Int)(using Frame): Unit < Sync =
             strategies.set(next).andThen(restarts.set(restartCount))
-
-        def setStrategyList(next: List[SupervisorStrategy])(using Frame): Unit < Sync = strategies.set(next)
 
         def fail(error: Throwable)(using Frame): Unit < Sync =
             cause.get.flatMap {
@@ -667,7 +650,6 @@ private[actors] object Dispatch:
                 terminated        <- Promise.init[Unit, Abort[Nothing]]
                 strategies        <- AtomicRef.init(List.empty[SupervisorStrategy])
                 restarts          <- AtomicInt.init(0)
-                props             <- AtomicRef.init(SupervisorStrategy.stop)
             yield Cell[M](
                 system,
                 path,
@@ -685,8 +667,7 @@ private[actors] object Dispatch:
                 timeoutGeneration,
                 terminated,
                 strategies,
-                restarts,
-                props
+                restarts
             )
     end Cell
 
