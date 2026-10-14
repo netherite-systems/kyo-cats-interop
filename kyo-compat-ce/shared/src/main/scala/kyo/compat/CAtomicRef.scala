@@ -1,0 +1,62 @@
+package kyo.compat
+
+import cats.effect.IO
+import cats.effect.kernel.Ref
+
+/** Uses `cats.effect.kernel.Ref[IO, A]`. Cats Effect has no `Frame` or `Trace` to propagate. `lift` and `lower` return the existing Cats
+  * Effect ref. `compareAndSet` uses `Ref.modify` because Cats Effect does not provide a native compare-and-set operation.
+  *
+  * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
+  */
+opaque type CAtomicRef[A] = Ref[IO, A]
+
+object CAtomicRef:
+
+    /** Allocates a fresh atomic reference initialized to `a`.
+      */
+    inline def init[A](inline a: A): CIO[CAtomicRef[A]] =
+        CIO.lift(Ref.of[IO, A](a))
+
+    /** Wraps a native `cats.effect.kernel.Ref[IO, A]` as a `CAtomicRef`. The conversion is the identity on the carrier.
+      *
+      * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
+      */
+    inline def lift[A](inline u: Ref[IO, A]): CAtomicRef[A] = u
+
+    extension [A](inline self: CAtomicRef[A])
+
+        /** Unwraps to the native `cats.effect.kernel.Ref[IO, A]`. The conversion is the identity on the carrier.
+          *
+          * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Ref.html
+          */
+        inline def lower: Ref[IO, A] = self
+
+        /** Reads the current value.
+          */
+        inline def get: CIO[A] = CIO.lift(self.get)
+
+        /** Atomically sets the value to `a`.
+          */
+        inline def set(inline a: A): CIO[Unit] = CIO.lift(self.set(a))
+
+        /** Atomically sets the value to `a` and returns the previous value.
+          */
+        inline def getAndSet(inline a: A): CIO[A] = CIO.lift(self.getAndSet(a))
+
+        /** Atomically applies `f` to the current value and returns the new value.
+          */
+        inline def updateAndGet(inline f: A => A): CIO[A] = CIO.lift(self.updateAndGet(f))
+
+        /** Atomically applies `f` to the current value and returns the previous value.
+          */
+        inline def getAndUpdate(inline f: A => A): CIO[A] = CIO.lift(self.getAndUpdate(f))
+
+        /** Atomic compare-and-set: replaces `expected` with `updated` iff the current value equals `expected`.
+          */
+        inline def compareAndSet(inline expected: A, inline updated: A): CIO[Boolean] =
+            CIO.lift(self.modify { cur =>
+                given CanEqual[A, A] = CanEqual.derived
+                if cur == expected then (updated, true) else (cur, false)
+            })
+    end extension
+end CAtomicRef
