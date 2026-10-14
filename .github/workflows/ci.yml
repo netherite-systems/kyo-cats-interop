@@ -23,4 +23,4 @@ jobs:
       - name: Format
         run: sbt -batch scalafmtCheckAll scalafmtSbtCheck
       - name: Test
-        run: sbt -batch kyoCatsJVM/test kyoCatsJS/test "+kyoSchedulerCatsJVM/test" kyoCompatCeJVM/test kyoCompatCeJS/test kyoCompatCeNative/test
+        run: sbt -batch kyoCatsJVM/test kyoCatsJS/test "+kyoSchedulerCatsJVM/test" ceConformanceJvmCe/test ceConformanceJsCeJS/test ceConformanceNativeCeNative/test

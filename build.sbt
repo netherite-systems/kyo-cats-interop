@@ -19,6 +19,14 @@ inThisBuild(List(
 // Timing-sensitive conformance checks should not share a machine with another suite.
 Global / concurrentRestrictions += Tags.limit(Tags.Test, 1)
 
+// `bindLocally` accepts one project for every platform of a backend, so each platform
+// has its own matrix pointed at that platform's binding. `compatConformance` unpacks
+// the suite shipped inside `kyo-compat-plugin` into `Test / sourceManaged`.
+// See https://github.com/getkyo/kyo/blob/v1.0.0-RC7/kyo-compat/plugin/src/main/scala/io/getkyo/compat/CompatPlugin.scala
+val CeLib = CompatBackendAxis.local("ce", "Ce", "-ce", Set("jvm", "js", "native"))
+
+ThisBuild / compatKyoVersion := kyoVersion
+
 lazy val root = project
     .in(file("."))
     .aggregate(
@@ -27,7 +35,10 @@ lazy val root = project
         kyoSchedulerCats.jvm,
         kyoCompatCe.jvm,
         kyoCompatCe.js,
-        kyoCompatCe.native
+        kyoCompatCe.native,
+        ceConformanceJvm.get(CeLib).get.jvm,
+        ceConformanceJs.get(CeLib).get.js,
+        ceConformanceNative.get(CeLib).get.native
     )
     .settings(
         name           := "kyo-cats-interop",
@@ -78,13 +89,8 @@ lazy val kyoCompatCe = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         scalacOptions += "-Xmax-inlines:1024",
         libraryDependencies ++= Seq(
             "org.typelevel" %%% "cats-effect" % catsEffectVersion,
-            "co.fs2"        %%% "fs2-core"    % fs2Version,
-            "org.scalatest" %%% "scalatest"   % scalaTestVersion % Test
-        ),
-        Test / scalacOptions += "-Xmax-inlines:1024"
-    )
-    .jvmSettings(
-        Test / fork := true
+            "co.fs2"        %%% "fs2-core"    % fs2Version
+        )
     )
     .jsSettings(
         // Scala.js does not ship `java.time`. `CIO.now` returns `java.time.Instant`.
@@ -92,3 +98,43 @@ lazy val kyoCompatCe = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         libraryDependencies += "io.github.cquiroz" %%% "scala-java-time"      % "2.7.0",
         libraryDependencies += "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.7.0"
     )
+
+// CeBindingTest is the only suite kept in this repo. The rows whose module name ends in `-ce`
+// compile it; the implicit Future row of the JVM matrix does not.
+val ceBindingTests = Def.setting {
+    if (moduleName.value.endsWith("-ce"))
+        Seq((LocalRootProject / baseDirectory).value / "kyo-compat-ce" / "binding-tests" / "src" / "test" / "scala")
+    else
+        Nil
+}
+
+lazy val ceConformanceJvm = (projectMatrix in file("kyo-compat-ce/.conformance/jvm"))
+    .settings(
+        name           := "kyo-compat-ce-conformance",
+        publish / skip := true,
+        Test / unmanagedSourceDirectories ++= ceBindingTests.value
+    )
+    .compatLibrary(CeLib)(VirtualAxis.jvm)(Seq(scala3Version))
+    .bindLocally(CeLib, kyoCompatCe.jvm)
+    .compatConformance()
+    .jvmSettings(Test / fork := true)
+
+lazy val ceConformanceJs = (projectMatrix in file("kyo-compat-ce/.conformance/js"))
+    .settings(
+        name           := "kyo-compat-ce-conformance",
+        publish / skip := true,
+        Test / unmanagedSourceDirectories ++= ceBindingTests.value
+    )
+    .compatLibrary(CeLib)(VirtualAxis.js)(Seq(scala3Version))
+    .bindLocally(CeLib, kyoCompatCe.js)
+    .compatConformance()
+
+lazy val ceConformanceNative = (projectMatrix in file("kyo-compat-ce/.conformance/native"))
+    .settings(
+        name           := "kyo-compat-ce-conformance",
+        publish / skip := true,
+        Test / unmanagedSourceDirectories ++= ceBindingTests.value
+    )
+    .compatLibrary(CeLib)(VirtualAxis.native)(Seq(scala3Version))
+    .bindLocally(CeLib, kyoCompatCe.native)
+    .compatConformance()

@@ -78,3 +78,5 @@ lazy val myLib = (projectMatrix in file("my-lib"))
 ```
 
 `CIO.async` registers an `IO.async` cancellation token, so a timeout or an outer cancel can stop waiting on a callback. Cancelling that wait does not undo the external operation. `CAtomicInt`, `CAtomicLong`, and `CAtomicBoolean` are aliases of `CAtomicRef`, which defines the operations once.
+
+The cross-binding conformance suite is the one bundled in `kyo-compat-plugin`, unpacked per platform with `compatConformance()`. Bumping the plugin version with `kyoVersion` replaces that suite. `CeBindingTest` is the only conformance test that lives in this repository.
