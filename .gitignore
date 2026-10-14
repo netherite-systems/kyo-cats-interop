@@ -8,3 +8,5 @@ project/project/
 *.iml
 .scala-build/
 null/
+
+.sonatype-credentials

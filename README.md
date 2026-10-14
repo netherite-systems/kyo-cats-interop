@@ -17,7 +17,7 @@ Cats Effect is 3.7.1. fs2 is 3.14.0. Replace `0.1.0-SNAPSHOT` with the published
 ## kyo-cats
 
 ```scala
-libraryDependencies += "io.github.netheritesystems" %%% "kyo-cats" % "0.1.0-SNAPSHOT"
+libraryDependencies += "io.github.netherite-systems" %%% "kyo-cats" % "0.1.0-SNAPSHOT"
 ```
 
 ```scala
@@ -37,7 +37,7 @@ val asIO: CatsIO[String] = Cats.run(greeting)
 ## kyo-scheduler-cats
 
 ```scala
-libraryDependencies += "io.github.netheritesystems" %% "kyo-scheduler-cats" % "0.1.0-SNAPSHOT"
+libraryDependencies += "io.github.netherite-systems" %% "kyo-scheduler-cats" % "0.1.0-SNAPSHOT"
 ```
 
 ```scala
@@ -57,7 +57,7 @@ This module is the Cats Effect backend for [`kyo-compat`](https://github.com/get
 Direct use:
 
 ```scala
-libraryDependencies += "io.github.netheritesystems" %%% "kyo-compat-ce" % "0.1.0-SNAPSHOT"
+libraryDependencies += "io.github.netherite-systems" %%% "kyo-compat-ce" % "0.1.0-SNAPSHOT"
 ```
 
 With `kyo-compat-plugin` 1.0.0-RC7, declare it as an external backend. The name `ce` matches the backend Kyo removed, so existing `-ce` artifact suffixes stay the same:
@@ -68,7 +68,7 @@ val CeLib = CompatBackendAxis.external(
     "Ce",
     "-ce",
     Set("jvm", "js", "native"),
-    "io.github.netheritesystems",
+    "io.github.netherite-systems",
     "kyo-compat-ce",
     "0.1.0-SNAPSHOT"
 )

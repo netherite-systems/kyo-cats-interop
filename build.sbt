@@ -7,13 +7,37 @@ val scalaTestVersion  = "3.2.20"
 
 ThisBuild / scalaVersion       := scala3Version
 ThisBuild / crossScalaVersions := Seq(scala3Version)
-ThisBuild / organization       := "io.github.netheritesystems"
-ThisBuild / version            := "0.1.0-SNAPSHOT"
+ThisBuild / organization       := "io.github.netherite-systems"
+ThisBuild / version            := "0.1.0"
 ThisBuild / versionScheme      := Some("early-semver")
 
 inThisBuild(List(
-    homepage := Some(url("https://github.com/NetheriteSystems/kyo-cats-interop")),
-    licenses := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
+    homepage := Some(url("https://github.com/netherite-systems/kyo-cats-interop")),
+    licenses := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0")),
+    organizationName := "NetheriteSystems",
+    organizationHomepage := Some(url("https://github.com/netherite-systems/kyo-cats-interop")),
+    scmInfo := Some(ScmInfo(
+        url("https://github.com/netherite-systems/kyo-cats-interop"),
+        "scm:git:git@github.com:netherite-systems/kyo-cats-interop.git"
+    )),
+    developers := List(Developer(
+        "nojipiz",
+        "Orlando Vargas",
+        "nojipiz@protonmail.com",
+        url("https://github.com/nojipiz")
+    )),
+    description := "Interop between Kyo and Cats Effect / fs2",
+    pomIncludeRepository := { _ => false },
+    publishMavenStyle := true,
+    publishTo := {
+        val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
+        if (version.value.endsWith("SNAPSHOT")) Some("central-snapshots" at centralSnapshots)
+        else localStaging.value
+    },
+    credentials ++= {
+        val localCreds = file(".sonatype-credentials")
+        if (localCreds.exists()) Seq(Credentials(localCreds)) else Nil
+    }
 ))
 
 // Timing-sensitive conformance checks should not share a machine with another suite.
