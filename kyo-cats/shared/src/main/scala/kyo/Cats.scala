@@ -1,23 +1,15 @@
 package kyo
 
 import cats.effect.IO as CatsIO
+import kyo.kernel.*
 import scala.concurrent.ExecutionContext
 import scala.util.Failure
 import scala.util.Success
 
-/** Bridge between Kyo and `cats.effect.IO`.
-  *
-  * `get` lifts an `IO` into `A < (Abort[Nothing] & Async)`. Failures from the `IO` are Kyo panics, not `Abort` failures. The lifted `IO`
-  * runs on `IORuntime.global`, and interrupting the Kyo fiber cancels that `IO`.
-  *
-  * See https://typelevel.org/cats-effect/api/3.x/cats/effect/unsafe/IORuntime.html
-  */
 object Cats:
 
-    /** Lifts `io` into a Kyo computation. The by-name argument is deferred until the computation runs.
-      *
-      * A failure produced by cancelling the Kyo fiber is dropped: the interrupt settles the promise, so the cancellation exception must not
-      * also complete it as a panic.
+    /** Lifts a `cats.effect.IO` into a Kyo effect. The `IO` argument is by-name, so construction is deferred until the Kyo computation
+      * runs. Failures from the `IO` are Kyo panics, not `Abort` failures.
       *
       * See https://typelevel.org/cats-effect/api/3.x/cats/effect/IO.html
       */
@@ -28,13 +20,13 @@ object Cats:
             val (future, cancel) = io.unsafeToFutureCancelable()
             val interrupted      = new java.util.concurrent.atomic.AtomicBoolean(false)
             future.onComplete {
-                case Success(v) =>
-                    p.completeDiscard(Result.succeed(v))
-                case Failure(ex) =>
-                    if !interrupted.get() then p.completeDiscard(Result.panic(ex))
+                case Success(v) => p.complete(Result.succeed(v))
+                // A failure caused by our own cancellation (the Kyo fiber was interrupted) is
+                // not a panic: the interrupt settles the promise, so the boxed cancellation
+                // exception must not race in and leak as an unexpected panic.
+                // See https://typelevel.org/cats-effect/api/3.x/cats/effect/IO.html
+                case Failure(ex) => if !interrupted.get() then discard(p.complete(Result.panic(ex)))
             }(using ExecutionContext.parasitic)
-            // Interrupting the Kyo promise cancels the running `IO`.
-            // See https://getkyo.io/latest/kyo-core/
             p.onInterrupt { _ =>
                 interrupted.set(true)
                 discard(cancel())

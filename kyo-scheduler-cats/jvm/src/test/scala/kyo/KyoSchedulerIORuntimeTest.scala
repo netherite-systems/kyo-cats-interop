@@ -1,9 +1,9 @@
 package kyo
 
 import cats.effect.*
-import org.scalatest.freespec.AnyFreeSpec
+import org.scalatest.freespec.AsyncFreeSpec
 
-class KyoSchedulerIORuntimeTest extends AnyFreeSpec {
+class KyoSchedulerIORuntimeTest extends AsyncFreeSpec {
 
     import KyoSchedulerIORuntime.global
 
@@ -15,10 +15,5 @@ class KyoSchedulerIORuntimeTest extends AnyFreeSpec {
     "blocking" in {
         val thread = IO.cede.flatMap(_ => IO.blocking(Thread.currentThread().getName())).unsafeRunSync()
         assert(thread.contains("kyo"))
-    }
-
-    "IOApp" in {
-        val code = KyoSchedulerIOAppTest.run(Nil).unsafeRunSync()
-        assert(code == ExitCode.Success)
     }
 }

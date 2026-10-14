@@ -163,10 +163,13 @@ object CIO:
     inline def nowMonotonic: CIO[FiniteDuration] =
         lift(IO.monotonic)
 
-    /** Runs `c` with a deadline; resolves to `None` if `d` elapses first.
+    /** Runs `c` with a deadline; resolves to `None` if `d` elapses first. A successful `null` is also `None`, because `Option.apply` treats
+      * a null value as absent.
+      *
+      * See https://scala-lang.org/api/3.x/scala/Option$.html
       */
     inline def timeout[A](inline d: FiniteDuration)(inline c: CIO[A]): CIO[Option[A]] =
-        lift(c.lower.map(Some(_)).timeoutTo(d, IO.none[A]))
+        lift(c.lower.map(Option(_)).timeoutTo(d, IO.none[A]))
 
     /** Runs `c` with a deadline; fails with `e` if `d` elapses first.
       */

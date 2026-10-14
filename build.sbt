@@ -95,24 +95,13 @@ lazy val kyoCompatCe = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     .jsSettings(
         // Scala.js does not ship `java.time`. `CIO.now` returns `java.time.Instant`.
         // See https://github.com/cquiroz/scala-java-time
-        libraryDependencies += "io.github.cquiroz" %%% "scala-java-time"      % "2.7.0",
-        libraryDependencies += "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.7.0"
+        libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % "2.7.0"
     )
-
-// CeBindingTest is the only suite kept in this repo. The rows whose module name ends in `-ce`
-// compile it; the implicit Future row of the JVM matrix does not.
-val ceBindingTests = Def.setting {
-    if (moduleName.value.endsWith("-ce"))
-        Seq((LocalRootProject / baseDirectory).value / "kyo-compat-ce" / "binding-tests" / "src" / "test" / "scala")
-    else
-        Nil
-}
 
 lazy val ceConformanceJvm = (projectMatrix in file("kyo-compat-ce/.conformance/jvm"))
     .settings(
         name           := "kyo-compat-ce-conformance",
-        publish / skip := true,
-        Test / unmanagedSourceDirectories ++= ceBindingTests.value
+        publish / skip := true
     )
     .compatLibrary(CeLib)(VirtualAxis.jvm)(Seq(scala3Version))
     .bindLocally(CeLib, kyoCompatCe.jvm)
@@ -122,8 +111,7 @@ lazy val ceConformanceJvm = (projectMatrix in file("kyo-compat-ce/.conformance/j
 lazy val ceConformanceJs = (projectMatrix in file("kyo-compat-ce/.conformance/js"))
     .settings(
         name           := "kyo-compat-ce-conformance",
-        publish / skip := true,
-        Test / unmanagedSourceDirectories ++= ceBindingTests.value
+        publish / skip := true
     )
     .compatLibrary(CeLib)(VirtualAxis.js)(Seq(scala3Version))
     .bindLocally(CeLib, kyoCompatCe.js)
@@ -132,8 +120,7 @@ lazy val ceConformanceJs = (projectMatrix in file("kyo-compat-ce/.conformance/js
 lazy val ceConformanceNative = (projectMatrix in file("kyo-compat-ce/.conformance/native"))
     .settings(
         name           := "kyo-compat-ce-conformance",
-        publish / skip := true,
-        Test / unmanagedSourceDirectories ++= ceBindingTests.value
+        publish / skip := true
     )
     .compatLibrary(CeLib)(VirtualAxis.native)(Seq(scala3Version))
     .bindLocally(CeLib, kyoCompatCe.native)

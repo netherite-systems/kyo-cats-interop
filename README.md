@@ -77,6 +77,6 @@ lazy val myLib = (projectMatrix in file("my-lib"))
     .compatLibrary(CeLib)(VirtualAxis.jvm, VirtualAxis.js, VirtualAxis.native)(Seq("3.9.0"))
 ```
 
-`CIO.async` registers an `IO.async` cancellation token, so a timeout or an outer cancel can stop waiting on a callback. Cancelling that wait does not undo the external operation. `CAtomicInt`, `CAtomicLong`, and `CAtomicBoolean` are aliases of `CAtomicRef`, which defines the operations once.
+`CIO.async` registers an `IO.async` cancellation token, so a timeout or an outer cancel can stop waiting on a callback. Cancelling that wait does not undo the external operation. `CIO.timeout` uses `Option`, so a successful `null` is `None`, the same result as a deadline. `CAtomicInt`, `CAtomicLong`, and `CAtomicBoolean` are separate opaque `Ref`s, each with its own arithmetic.
 
-The cross-binding conformance suite is the one bundled in `kyo-compat-plugin`, unpacked per platform with `compatConformance()`. Bumping the plugin version with `kyoVersion` replaces that suite. `CeBindingTest` is the only conformance test that lives in this repository.
+The cross-binding conformance suite is the one bundled in `kyo-compat-plugin`, unpacked per platform with `compatConformance()`. Bumping the plugin version with `kyoVersion` replaces that suite.
