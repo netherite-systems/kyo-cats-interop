@@ -39,7 +39,8 @@ object Cats:
       *
       * Only `Abort[Throwable] & Async` may be pending. Cancellation waits until the Kyo fiber has finished, so finalizers do not outlive
       * the `IO`. The join is installed under `IO.uncancelable` so an interrupt that arrives before the async callback is registered still
-      * interrupts the Kyo fiber.
+      * interrupts the Kyo fiber. The join wait returns `Some(IO.unit)` so that wait stays cancelable and `onCancel` can run; the finalizer
+      * itself waits with no token, because it must run to completion.
       *
       * See https://typelevel.org/cats-effect/docs/typeclasses/monadcancel
       */
@@ -56,7 +57,10 @@ object Cats:
                                     case Result.Failure(e) => cb(Left(e))
                                     case Result.Panic(e)   => cb(Left(e))
                                 }
-                                None
+                                // `None` masks this wait, so a cancel that arrives after registration never reaches `onCancel` and the Kyo
+                                // fiber keeps running. `Some(IO.unit)` keeps the wait cancelable when there is nothing else to finalize.
+                                // See https://typelevel.org/cats-effect/api/3.x/cats/effect/IO$.html
+                                Some(CatsIO.unit)
                             }
                         }
                     val interruptAndAwait: CatsIO[Unit] =
