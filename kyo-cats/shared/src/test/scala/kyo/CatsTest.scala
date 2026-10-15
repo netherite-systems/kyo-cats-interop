@@ -286,4 +286,189 @@ class CatsTest extends kyo.test.Test[Any]:
         }
     }
 
+    "F-generic bridges" - {
+        "lift via Dispatcher" in runCatsIO {
+            import cats.effect.std.Dispatcher as CatsDispatcher
+            CatsDispatcher.parallel[CatsIO].use { disp =>
+                given CatsDispatcher[CatsIO]               = disp
+                val lifted: Int < (Abort[Nothing] & Async) = Cats.lift(CatsIO.pure(7))
+                Cats.run(Abort.run[Throwable](lifted).map {
+                    case Result.Success(v) => assert(v == 7)
+                    case other             => throw new AssertionError(s"unexpected $other")
+                })
+            }
+        }
+
+        "runF generic to IO" in runCatsIO {
+            val kyoWork: Int < (Abort[Throwable] & Async) = Async.delay(1.millis)(42)
+            Cats.runF[CatsIO, Int](kyoWork).map(v => assert(v == 42))
+        }
+
+        "runF generic to EitherT" in runCatsIO {
+            import cats.data.EitherT
+            type Eith[A] = EitherT[CatsIO, Throwable, A]
+            val kyoWork: Int < (Abort[Throwable] & Async) = 99
+            val eff: Eith[Int]                            =
+                Cats.runF[Eith, Int](kyoWork)
+            eff.value.flatMap {
+                case Right(v) => CatsIO(assert(v == 99))
+                case Left(e)  => CatsIO.raiseError(e)
+            }
+        }
+
+        "lift failure becomes Panic" in runCatsIO {
+            import cats.effect.std.Dispatcher as CatsDispatcher
+            CatsDispatcher.parallel[CatsIO].use { disp =>
+                given CatsDispatcher[CatsIO]               = disp
+                val boom                                   = new RuntimeException("lift boom")
+                val lifted: Int < (Abort[Nothing] & Async) = Cats.lift(CatsIO.raiseError[Int](boom))
+                Cats.run(Abort.run[Throwable](lifted).map {
+                    case Result.Panic(ex) => assert(ex == boom)
+                    case other            => fail(s"expected Panic, got $other")
+                })
+            }
+        }
+
+        "runF maps Abort.fail to F error" in runCatsIO {
+            val boom                                      = new RuntimeException("kyo abort")
+            val kyoWork: Int < (Abort[Throwable] & Async) = Abort.fail(boom)
+            Cats.runF[CatsIO, Int](kyoWork).attempt.map {
+                case Left(ex) => assert(ex == boom)
+                case Right(v) => fail(s"expected error, got $v")
+            }
+        }
+
+        "runF maps Kyo panic to F error" in runCatsIO {
+            val boom                                       = new RuntimeException("kyo panic")
+            val kyoPanic: Int < (Abort[Throwable] & Async) = Cats.get(CatsIO.raiseError[Int](boom))
+            Cats.runF[CatsIO, Int](kyoPanic).attempt.map {
+                case Left(ex) => assert(ex == boom)
+                case Right(v) => fail(s"expected error, got $v")
+            }
+        }
+
+        if Platform.isJVM then
+            "cancellation across the generic boundary" - {
+                "canceling outer Cats fiber cancels lifted F" in runCatsIO {
+                    import cats.effect.std.Dispatcher as CatsDispatcher
+                    val started = new CountDownLatch(1)
+                    val done    = new CountDownLatch(1)
+                    CatsDispatcher.parallel[CatsIO].use { disp =>
+                        given CatsDispatcher[CatsIO] = disp
+                        def effect                   =
+                            Cats.run {
+                                val looped = Cats.lift(CatsIO(started.countDown()) >> CatsIO.never.guarantee(CatsIO(done.countDown())))
+                                Async.zip[Throwable, Unit, Unit, Any](looped, Async.never[Unit])
+                            }
+                        for
+                            f <- effect.start
+                            _ <- CatsIO(started.await(100, TimeUnit.MILLISECONDS))
+                            _ <- f.cancel
+                            r <- f.join
+                            _ <- CatsIO(done.await(100, TimeUnit.MILLISECONDS))
+                        yield assert(r.isCanceled)
+                        end for
+                    }
+                }
+
+                "interrupting Kyo cancels lifted F" in runKyo {
+                    import cats.effect.std.Dispatcher as CatsDispatcher
+                    val started                = new CountDownLatch(1)
+                    val done                   = new CountDownLatch(1)
+                    def catsWork: CatsIO[Unit] =
+                        CatsIO(started.countDown()) >> CatsIO.never.guarantee(CatsIO(done.countDown()))
+                    val panic = Result.Panic(new Exception)
+                    for
+                        alloc <- Cats.get(CatsDispatcher.parallel[CatsIO].allocated)
+                        r     <-
+                            given CatsDispatcher[CatsIO] = alloc._1
+                            for
+                                f <- Fiber.initUnscoped(Cats.lift(catsWork))
+                                _ <- Sync.defer(started.await(100, TimeUnit.MILLISECONDS))
+                                _ <- f.interrupt(panic)
+                                r <- f.getResult
+                                _ <- Sync.defer(done.await(100, TimeUnit.MILLISECONDS))
+                            yield r
+                            end for
+                        _ <- Cats.get(alloc._2)
+                    yield assert(r == panic)
+                    end for
+                }
+            }
+        end if
+    }
+
+    "minimal typeclasses" - {
+        import kyo.Cats.given
+
+        def runKyoT(v: => Unit < (Abort[Throwable] & Async)): Unit < Async =
+            Async.fromFuture(Cats.run(v).unsafeToFuture())
+
+        "Async summon resolves Sync/Temporal bounds" in runKyoT {
+            def needsSync[F[_]](using cats.effect.kernel.Sync[F]): F[Int]   = summon[cats.effect.kernel.Sync[F]].pure(3)
+            def needsAsync[F[_]](using cats.effect.kernel.Async[F]): F[Int] = summon[cats.effect.kernel.Async[F]].pure(4)
+            for
+                a <- needsSync[Cats.Suspend]
+                b <- needsAsync[Cats.Suspend]
+            yield assert(a == 3 && b == 4)
+            end for
+        }
+
+        "MonadError recovers Failure and Panic" in runKyoT {
+            val F                                             = summon[cats.effect.kernel.Async[Cats.Suspend]]
+            val fromFailure: Int < (Abort[Throwable] & Async) = F.raiseError[Int](new RuntimeException("f"))
+            val fromAbort: Int < (Abort[Throwable] & Async)   = Abort.fail(new RuntimeException("q"))
+            for
+                r1 <- Abort.run[Throwable](F.handleErrorWith(fromFailure)(_ => 1))
+                r2 <- Abort.run[Throwable](F.handleErrorWith(fromAbort)(_ => 2))
+            yield
+                assert(r1 == Result.succeed(1))
+                assert(r2 == Result.succeed(2))
+            end for
+        }
+
+        "handleErrorWith recovers Panic" in runKyoT {
+            val F                            = summon[cats.effect.kernel.Async[Cats.Suspend]]
+            val panicking: Cats.Suspend[Int] = Cats.get(CatsIO.raiseError[Int](new RuntimeException("boom")))
+            Abort.run[Throwable](F.handleErrorWith(panicking)(_ => 7)).map(r => assert(r == Result.succeed(7)))
+        }
+
+        "start and join through instance" in runKyoT {
+            val F = summon[cats.effect.kernel.Async[Cats.Suspend]]
+            for
+                fib <- F.start(F.pure(42))
+                v   <- fib.joinWithNever
+            yield assert(v == 42)
+            end for
+        }
+
+        "async roundtrip through instance" in runKyoT {
+            val F = summon[cats.effect.kernel.Async[Cats.Suspend]]
+            F.async_[Int](cb => cb(Right(5))).map(v => assert(v == 5))
+        }
+
+        "Ref/Deferred roundtrip through instance" in runKyoT {
+            val F = summon[cats.effect.kernel.Async[Cats.Suspend]]
+            for
+                ref <- F.ref(0)
+                _   <- ref.update(_ + 1)
+                v   <- ref.get
+                d   <- F.deferred[String]
+                _   <- d.complete("ok")
+                s   <- d.get
+            yield assert(v == 1 && s == "ok")
+            end for
+        }
+
+        "sleep/canceled/uncancelable via instance" in runKyoT {
+            val F = summon[cats.effect.kernel.Async[Cats.Suspend]]
+            for
+                _ <- F.sleep(scala.concurrent.duration.FiniteDuration(1, "ms"))
+                _ <- F.uncancelable(_ => 5)
+                _ <- F.onCancel(6, F.unit)
+            yield assert(true)
+            end for
+        }
+    }
+
 end CatsTest
