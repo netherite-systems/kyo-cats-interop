@@ -8,7 +8,6 @@ val scalaTestVersion  = "3.2.20"
 ThisBuild / scalaVersion       := scala3Version
 ThisBuild / crossScalaVersions := Seq(scala3Version)
 ThisBuild / organization       := "io.github.netherite-systems"
-ThisBuild / version            := "0.1.0"
 ThisBuild / versionScheme      := Some("early-semver")
 
 inThisBuild(List(
@@ -29,11 +28,8 @@ inThisBuild(List(
     description := "Interop between Kyo and Cats Effect / fs2",
     pomIncludeRepository := { _ => false },
     publishMavenStyle := true,
-    publishTo := {
-        val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
-        if (version.value.endsWith("SNAPSHOT")) Some("central-snapshots" at centralSnapshots)
-        else localStaging.value
-    },
+    // sbt-ci-release owns `publishTo` (bundle staging / snapshots).
+    // Project-local Sonatype token for manual runs; CI uses env credentials.
     credentials ++= {
         val localCreds = file(".sonatype-credentials")
         if (localCreds.exists()) Seq(Credentials(localCreds)) else Nil
