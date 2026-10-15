@@ -11,11 +11,11 @@ ThisBuild / organization       := "io.github.netherite-systems"
 ThisBuild / versionScheme      := Some("early-semver")
 
 inThisBuild(List(
-    homepage := Some(url("https://github.com/netherite-systems/kyo-cats-interop")),
-    licenses := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0")),
-    organizationName := "NetheriteSystems",
+    homepage             := Some(url("https://github.com/netherite-systems/kyo-cats-interop")),
+    licenses             := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0")),
+    organizationName     := "NetheriteSystems",
     organizationHomepage := Some(url("https://github.com/netherite-systems/kyo-cats-interop")),
-    scmInfo := Some(ScmInfo(
+    scmInfo              := Some(ScmInfo(
         url("https://github.com/netherite-systems/kyo-cats-interop"),
         "scm:git:git@github.com:netherite-systems/kyo-cats-interop.git"
     )),
@@ -25,9 +25,9 @@ inThisBuild(List(
         "nojipiz@protonmail.com",
         url("https://github.com/nojipiz")
     )),
-    description := "Interop between Kyo and Cats Effect / fs2",
+    description          := "kyo-cats-interop",
     pomIncludeRepository := { _ => false },
-    publishMavenStyle := true,
+    publishMavenStyle    := true,
     // sbt-ci-release owns `publishTo` (bundle staging / snapshots).
     // Project-local Sonatype token for manual runs; CI uses env credentials.
     credentials ++= {
@@ -70,6 +70,7 @@ lazy val kyoCats = crossProject(JVMPlatform, JSPlatform)
     .in(file("kyo-cats"))
     .settings(
         name               := "kyo-cats",
+        description        := name.value,
         crossScalaVersions := Seq(scala3Version),
         libraryDependencies ++= Seq(
             "io.getkyo"     %%% "kyo-core"        % kyoVersion,
@@ -90,6 +91,7 @@ lazy val kyoSchedulerCats = crossProject(JVMPlatform)
     .in(file("kyo-scheduler-cats"))
     .settings(
         name               := "kyo-scheduler-cats",
+        description        := name.value,
         crossScalaVersions := Seq(scala3Version, scala213Version),
         scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-Xsource:3") else Nil),
         libraryDependencies ++= Seq(
@@ -105,6 +107,7 @@ lazy val kyoCompatCe = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     .in(file("kyo-compat-ce"))
     .settings(
         name               := "kyo-compat-ce",
+        description        := name.value,
         crossScalaVersions := Seq(scala3Version),
         scalacOptions += "-Xmax-inlines:1024",
         libraryDependencies ++= Seq(
