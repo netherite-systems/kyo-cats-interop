@@ -10,3 +10,4 @@ project/project/
 null/
 
 .sonatype-credentials
+.sbt
