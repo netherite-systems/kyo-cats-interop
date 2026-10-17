@@ -10,9 +10,9 @@ import cats.effect.kernel.MonadCancel as CatsMonadCancel
 import cats.effect.kernel.Outcome as CatsOutcome
 import cats.effect.kernel.Poll as CatsPoll
 import cats.effect.kernel.Ref as CatsRef
+import cats.effect.kernel.Resource as CatsResource
 import cats.effect.kernel.Sync as CatsSync
 import cats.effect.kernel.Unique as CatsUnique
-import cats.effect.std.Dispatcher as CatsDispatcher
 import kyo.kernel.*
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
@@ -20,7 +20,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.util.Failure
 import scala.util.Success
 
-object Cats:
+object KyoToCats:
 
     /** Kyo suspension that carries a typed Cats failure channel. This is the `F[_]` that the typeclass instance below implements, and the
       * shape `runF` accepts.
@@ -44,33 +44,6 @@ object Cats:
             discard(cancel())
         }
     end bridgeFuture
-
-    /** Lifts a `cats.effect.IO` into a Kyo effect. The `IO` argument is by-name, so construction is deferred until the Kyo computation
-      * runs. Failures from the `IO` are Kyo panics, not `Abort` failures.
-      *
-      * See https://typelevel.org/cats-effect/api/3.x/cats/effect/IO.html
-      */
-    def get[A](io: => CatsIO[A])(using Frame): A < (Abort[Nothing] & Async) =
-        Sync.Unsafe.defer {
-            import cats.effect.unsafe.implicits.global
-            val p                = Promise.Unsafe.init[A, Any]()
-            val (future, cancel) = io.unsafeToFutureCancelable()
-            val interrupted      = new java.util.concurrent.atomic.AtomicBoolean(false)
-            future.onComplete {
-                case Success(v) => p.complete(Result.succeed(v))
-                // A failure caused by our own cancellation (the Kyo fiber was interrupted) is
-                // not a panic: the interrupt settles the promise, so the boxed cancellation
-                // exception must not race in and leak as an unexpected panic.
-                // See https://typelevel.org/cats-effect/api/3.x/cats/effect/IO.html
-                case Failure(ex) => if !interrupted.get() then discard(p.complete(Result.panic(ex)))
-            }(using ExecutionContext.parasitic)
-            p.onInterrupt { _ =>
-                interrupted.set(true)
-                discard(cancel())
-            }
-            p.safe.get
-        }
-    end get
 
     /** Interprets a Kyo computation as `cats.effect.IO`.
       *
@@ -114,26 +87,6 @@ object Cats:
         }
     end run
 
-    /** Lifts an arbitrary `F[A]` into Kyo via a `Dispatcher`. Failures become Kyo panics, mirroring `get`.
-      *
-      * Requires a `Dispatcher[F]` in scope (typically from `Dispatcher.parallel[F]`). This is the minimal runtime handle that can run an
-      * arbitrary `F` outside its own context; `Async[F]` alone cannot submit work from impure code.
-      */
-    def lift[F[_], A](fa: => F[A])(using CatsDispatcher[F], Frame): A < (Abort[Nothing] & Async) =
-        Sync.Unsafe.defer {
-            val dispatcher       = summon[CatsDispatcher[F]]
-            val faValue          = fa
-            val (future, cancel) = dispatcher.unsafeToFutureCancelable(faValue)
-            val promise          = Promise.Unsafe.init[A, Any]()
-            bridgeFuture(future, cancel)(
-                onInterrupt => promise.onInterrupt(_ => onInterrupt()),
-                value => promise.complete(Result.succeed(value)),
-                error => promise.complete(Result.panic(error))
-            )
-            promise.safe.get
-        }
-    end lift
-
     /** Interprets a Kyo computation as an arbitrary `F[_]`. This is the generic form of `run`: the only requirement is `Async[F]`, which
       * is the minimal Cats Effect capability that can suspend an async callback (`async`), restore cancelability (`poll`), and attach a
       * finalizer (`onCancel`).
@@ -170,8 +123,53 @@ object Cats:
         }
     end runF
 
+    /** Interprets a scoped Kyo computation as a `cats.effect.kernel.Resource[F, A]`. This is the scoped form of `runF`: the Kyo
+      * `Scope` stays open for the whole `Resource.use`, and closing happens in the `Resource` release.
+      *
+      * Allocation runs the Kyo computation under a fresh `Scope.Finalizer` (nested under any enclosing Kyo scope, like `Scope.run`).
+      * If acquisition fails or is interrupted, the finalizer is closed before the error propagates, so nothing leaks. On success the
+      * finalizer is handed to the `Resource` release, which closes it and awaits the drain, mirroring `run`'s interrupt-and-await.
+      * Kyo `Failure`/`Panic` become `F` errors, like `runF`.
+      *
+      * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Resource.html
+      */
+    def runResource[F[_], A](v: => A < (Scope & Abort[Throwable] & Async))(using F: CatsAsync[F], frame: Frame): CatsResource[F, A] =
+        CatsResource.eval(runF[F, (A, Scope.Finalizer)](acquireScoped(v))).flatMap { case (a, finalizer) =>
+            CatsResource.make(F.pure(a))(_ => runF[F, Unit](finalizer.close(Maybe.Absent).andThen(finalizer.await)))
+        }
+    end runResource
+
+    private def acquireScoped[A](v: => A < (Scope & Abort[Throwable] & Async))(using frame: Frame): (A, Scope.Finalizer) < (Abort[Throwable] & Async) =
+        Scope.Finalizer.init(1).map { finalizer =>
+            Sync.Unsafe.defer {
+                val delivered = AtomicBoolean.Unsafe.init(false)
+                ContextEffect.handle(
+                    Tag[Scope],
+                    derive = (outer: Maybe[Scope.Finalizer]) =>
+                        outer.foreach(enclosing => enclosing.addChild(finalizer))
+                        finalizer,
+                    fork = (parent: Scope.Finalizer) => parent.forked,
+                    join = (parent: Scope.Finalizer, _: Scope.Finalizer, _: Scope.Finalizer) => parent
+                )(v)
+                    .map { a =>
+                        Sync.defer {
+                            delivered.set(true)
+                            (a, finalizer)
+                        }
+                    }
+                    .handle(Sync.ensure(error => if delivered.get() then Kyo.unit else finalizer.close(error)))
+                    .handle(Abort.run[Any])
+                    .map { result =>
+                        result.error match
+                            case Present(_) => finalizer.awaitIfClosed.andThen(Abort.get(result.asInstanceOf[Result[Nothing, (A, Scope.Finalizer)]]))
+                            case Absent     => Abort.get(result.asInstanceOf[Result[Nothing, (A, Scope.Finalizer)]])
+                    }
+            }
+        }
+    end acquireScoped
+
     /** Cats Effect `Async` instance for `Suspend`, so Kyo computations can fill an `F[_]` bound in Cats libraries (http4s, fs2, doobie,
-      * ...). By subtyping it also serves every `Sync`/`Temporal`/`Concurrent`/`MonadCancel` bound. Import with `import kyo.Cats.given`.
+      * ...). By subtyping it also serves every `Sync`/`Temporal`/`Concurrent`/`MonadCancel` bound. Import with `import kyo.KyoToCats.given`.
       *
       * Mapping: `pure`/`map`/`flatMap` are Kyo sequencing; `raiseError` is `Abort.fail`; `handleErrorWith` recovers both Kyo `Failure` and
       * `Panic` since Cats has a single error channel; `delay`/`suspend` are `Sync.defer`; async/cancelable/concurrency/clock operations
@@ -183,7 +181,7 @@ object Cats:
         private given frameInstance: Frame     = Frame.internal
         private val ioAsync: CatsAsync[CatsIO] = CatsAsync[CatsIO]
 
-        private def toIO[A](fa: Suspend[A]): CatsIO[A]    = Cats.run(fa)(using frameInstance)
+        private def toIO[A](fa: Suspend[A]): CatsIO[A]    = KyoToCats.run(fa)(using frameInstance)
         private def fromIO[A](ioa: CatsIO[A]): Suspend[A] = Sync.Unsafe.defer {
             import cats.effect.unsafe.implicits.global
             val (future, cancel) = ioa.unsafeToFutureCancelable()
@@ -316,4 +314,4 @@ object Cats:
 
         override def applicative: cats.Applicative[Suspend] = this
     end asyncSuspend
-end Cats
+end KyoToCats
