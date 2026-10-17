@@ -84,7 +84,11 @@ object CatsToKyo:
       *
       * See https://typelevel.org/cats-effect/api/3.x/cats/effect/kernel/Resource.html
       */
-    def liftResource[F[_], A](resource: => CatsResource[F, A])(using CatsDispatcher[F], CatsMonadCancel[F, Throwable], Frame): A < (Scope & Abort[Nothing] & Async) =
+    def liftResource[F[_], A](resource: => CatsResource[F, A])(using
+        CatsDispatcher[F],
+        CatsMonadCancel[F, Throwable],
+        Frame
+    ): A < (Scope & Abort[Nothing] & Async) =
         Scope.acquireRelease(lift(resource.allocated))((pair: (A, F[Unit])) => lift(pair._2)).map(_._1)
     end liftResource
 

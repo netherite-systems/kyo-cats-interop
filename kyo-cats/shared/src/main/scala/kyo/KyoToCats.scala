@@ -139,7 +139,9 @@ object KyoToCats:
         }
     end runResource
 
-    private def acquireScoped[A](v: => A < (Scope & Abort[Throwable] & Async))(using frame: Frame): (A, Scope.Finalizer) < (Abort[Throwable] & Async) =
+    private def acquireScoped[A](v: => A < (Scope & Abort[Throwable] & Async))(using
+        frame: Frame
+    ): (A, Scope.Finalizer) < (Abort[Throwable] & Async) =
         Scope.Finalizer.init(1).map { finalizer =>
             Sync.Unsafe.defer {
                 val delivered = AtomicBoolean.Unsafe.init(false)
@@ -147,7 +149,8 @@ object KyoToCats:
                     Tag[Scope],
                     derive = (outer: Maybe[Scope.Finalizer]) =>
                         outer.foreach(enclosing => enclosing.addChild(finalizer))
-                        finalizer,
+                        finalizer
+                    ,
                     fork = (parent: Scope.Finalizer) => parent.forked,
                     join = (parent: Scope.Finalizer, _: Scope.Finalizer, _: Scope.Finalizer) => parent
                 )(v)
@@ -161,8 +164,9 @@ object KyoToCats:
                     .handle(Abort.run[Any])
                     .map { result =>
                         result.error match
-                            case Present(_) => finalizer.awaitIfClosed.andThen(Abort.get(result.asInstanceOf[Result[Nothing, (A, Scope.Finalizer)]]))
-                            case Absent     => Abort.get(result.asInstanceOf[Result[Nothing, (A, Scope.Finalizer)]])
+                            case Present(_) =>
+                                finalizer.awaitIfClosed.andThen(Abort.get(result.asInstanceOf[Result[Nothing, (A, Scope.Finalizer)]]))
+                            case Absent => Abort.get(result.asInstanceOf[Result[Nothing, (A, Scope.Finalizer)]])
                     }
             }
         }
