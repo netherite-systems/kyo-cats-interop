@@ -20,30 +20,12 @@ import scala.concurrent.duration.FiniteDuration
 import scala.util.Failure
 import scala.util.Success
 
-object KyoToCats:
+private[kyo] trait KyoToCats:
 
     /** Kyo suspension that carries a typed Cats failure channel. This is the `F[_]` that the typeclass instance below implements, and the
       * shape `runF` accepts.
       */
     type Suspend[A] = A < (Abort[Throwable] & Async)
-
-    private def bridgeFuture[A](future: Future[A], cancel: () => Future[Unit])(
-        registerInterrupt: (() => Unit) => Unit,
-        completeSuccess: A => Boolean,
-        completeFailure: Throwable => Boolean
-    ): Unit =
-        val interrupted = new java.util.concurrent.atomic.AtomicBoolean(false)
-        future.onComplete {
-            case Success(v) => discard(completeSuccess(v))
-            // A failure caused by our own cancellation (the Kyo fiber was interrupted) is not a panic: the interrupt settles the promise,
-            // so the boxed cancellation exception must not race in and leak as an unexpected panic.
-            case Failure(ex) => if !interrupted.get() then discard(completeFailure(ex))
-        }(using ExecutionContext.parasitic)
-        registerInterrupt { () =>
-            interrupted.set(true)
-            discard(cancel())
-        }
-    end bridgeFuture
 
     /** Interprets a Kyo computation as `cats.effect.IO`.
       *
@@ -172,8 +154,26 @@ object KyoToCats:
         }
     end acquireScoped
 
+    private def bridgeFuture[A](future: Future[A], cancel: () => Future[Unit])(
+        registerInterrupt: (() => Unit) => Unit,
+        completeSuccess: A => Boolean,
+        completeFailure: Throwable => Boolean
+    ): Unit =
+        val interrupted = new java.util.concurrent.atomic.AtomicBoolean(false)
+        future.onComplete {
+            case Success(v) => discard(completeSuccess(v))
+            // A failure caused by our own cancellation (the Kyo fiber was interrupted) is not a panic: the interrupt settles the promise,
+            // so the boxed cancellation exception must not race in and leak as an unexpected panic.
+            case Failure(ex) => if !interrupted.get() then discard(completeFailure(ex))
+        }(using ExecutionContext.parasitic)
+        registerInterrupt { () =>
+            interrupted.set(true)
+            discard(cancel())
+        }
+    end bridgeFuture
+
     /** Cats Effect `Async` instance for `Suspend`, so Kyo computations can fill an `F[_]` bound in Cats libraries (http4s, fs2, doobie,
-      * ...). By subtyping it also serves every `Sync`/`Temporal`/`Concurrent`/`MonadCancel` bound. Import with `import kyo.KyoToCats.given`.
+      * ...). By subtyping it also serves every `Sync`/`Temporal`/`Concurrent`/`MonadCancel` bound. Import with `import kyo.Cats.given`.
       *
       * Mapping: `pure`/`map`/`flatMap` are Kyo sequencing; `raiseError` is `Abort.fail`; `handleErrorWith` recovers both Kyo `Failure` and
       * `Panic` since Cats has a single error channel; `delay`/`suspend` are `Sync.defer`; async/cancelable/concurrency/clock operations
@@ -185,7 +185,7 @@ object KyoToCats:
         private given frameInstance: Frame     = Frame.internal
         private val ioAsync: CatsAsync[CatsIO] = CatsAsync[CatsIO]
 
-        private def toIO[A](fa: Suspend[A]): CatsIO[A]    = KyoToCats.run(fa)(using frameInstance)
+        private def toIO[A](fa: Suspend[A]): CatsIO[A]    = run(fa)(using frameInstance)
         private def fromIO[A](ioa: CatsIO[A]): Suspend[A] = Sync.Unsafe.defer {
             import cats.effect.unsafe.implicits.global
             val (future, cancel) = ioa.unsafeToFutureCancelable()

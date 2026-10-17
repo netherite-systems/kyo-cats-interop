@@ -10,25 +10,7 @@ import scala.concurrent.Future
 import scala.util.Failure
 import scala.util.Success
 
-object CatsToKyo:
-
-    private def bridgeFuture[A](future: Future[A], cancel: () => Future[Unit])(
-        registerInterrupt: (() => Unit) => Unit,
-        completeSuccess: A => Boolean,
-        completeFailure: Throwable => Boolean
-    ): Unit =
-        val interrupted = new java.util.concurrent.atomic.AtomicBoolean(false)
-        future.onComplete {
-            case Success(v) => discard(completeSuccess(v))
-            // A failure caused by our own cancellation (the Kyo fiber was interrupted) is not a panic: the interrupt settles the promise,
-            // so the boxed cancellation exception must not race in and leak as an unexpected panic.
-            case Failure(ex) => if !interrupted.get() then discard(completeFailure(ex))
-        }(using ExecutionContext.parasitic)
-        registerInterrupt { () =>
-            interrupted.set(true)
-            discard(cancel())
-        }
-    end bridgeFuture
+private[kyo] trait CatsToKyo:
 
     /** Lifts a `cats.effect.IO` into a Kyo effect. The `IO` argument is by-name, so construction is deferred until the Kyo computation
       * runs. Failures from the `IO` are Kyo panics, not `Abort` failures.
@@ -91,5 +73,23 @@ object CatsToKyo:
     ): A < (Scope & Abort[Nothing] & Async) =
         Scope.acquireRelease(lift(resource.allocated))((pair: (A, F[Unit])) => lift(pair._2)).map(_._1)
     end liftResource
+
+    private def bridgeFuture[A](future: Future[A], cancel: () => Future[Unit])(
+        registerInterrupt: (() => Unit) => Unit,
+        completeSuccess: A => Boolean,
+        completeFailure: Throwable => Boolean
+    ): Unit =
+        val interrupted = new java.util.concurrent.atomic.AtomicBoolean(false)
+        future.onComplete {
+            case Success(v) => discard(completeSuccess(v))
+            // A failure caused by our own cancellation (the Kyo fiber was interrupted) is not a panic: the interrupt settles the promise,
+            // so the boxed cancellation exception must not race in and leak as an unexpected panic.
+            case Failure(ex) => if !interrupted.get() then discard(completeFailure(ex))
+        }(using ExecutionContext.parasitic)
+        registerInterrupt { () =>
+            interrupted.set(true)
+            discard(cancel())
+        }
+    end bridgeFuture
 
 end CatsToKyo

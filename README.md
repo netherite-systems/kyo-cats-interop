@@ -6,16 +6,16 @@ Kyo dropped its Typelevel interop in [1.0.0-RC6](https://github.com/getkyo/kyo/p
 
 The code is derived from Kyo and is released under the same [Apache-2.0](LICENSE.txt) license.
 
-| Module               | Platforms                   | What it does                                                      |
-| -------------------- | --------------------------- | ----------------------------------------------------------------- |
-| `kyo-cats`           | JVM, Scala.js               | Lift `cats.effect.IO` into Kyo, and run a Kyo computation as `IO` |
-| `kyo-scheduler-cats` | JVM                         | Run Cats Effect on `kyo-scheduler`                                |
-| `kyo-compat-ce`      | JVM, Scala.js, Scala Native | `kyo.compat` backend on `cats.effect.IO` and fs2                  |
+| Module               | Platforms                   | What it does                                                                 |
+| -------------------- | --------------------------- | ---------------------------------------------------------------------------- |
+| `kyo-cats`           | JVM, Scala.js               | Lift `cats.effect.IO` into Kyo and run Kyo as `IO`, incl. `Scope`/`Resource` |
+| `kyo-scheduler-cats` | JVM                         | Run Cats Effect on `kyo-scheduler`                                           |
+| `kyo-compat-ce`      | JVM, Scala.js, Scala Native | `kyo.compat` backend on `cats.effect.IO` and fs2                             |
 
 ## kyo-cats
 
 ```scala
-libraryDependencies += "io.github.netherite-systems" %%% "kyo-cats" % "0.1.2"
+libraryDependencies += "io.github.netherite-systems" %%% "kyo-cats" % "0.1.3"
 ```
 
 ```scala
@@ -30,12 +30,12 @@ val greeting: String < (Abort[Nothing] & Async) =
 val asIO: CatsIO[String] = Cats.run(greeting)
 ```
 
-`Cats.get` schedules the `IO` on `IORuntime.global`. Failures from that `IO` surface as Kyo panics. `Cats.run` accepts only `Abort[Throwable] & Async`; handle any other effect first. Cancelling either side interrupts the other and waits until the interrupted side has stopped.
+`Cats.get` schedules the `IO` on `IORuntime.global`. Failures from that `IO` surface as Kyo panics. `Cats.run` accepts only `Abort[Throwable] & Async`; handle any other effect first. Cancelling either side interrupts the other and waits until the interrupted side has stopped. Generic variants exist for arbitrary `F[_]` with `Async` (`Cats.runF`, `Cats.lift` via `Dispatcher`), and Kyo `Scope` maps to Cats `Resource` in both directions (`Cats.runResource`, `Cats.liftResource`). Full API and resource examples in [`kyo-cats/README.md`](kyo-cats/README.md).
 
 ## kyo-scheduler-cats
 
 ```scala
-libraryDependencies += "io.github.netherite-systems" %% "kyo-scheduler-cats" % "0.1.2"
+libraryDependencies += "io.github.netherite-systems" %% "kyo-scheduler-cats" % "0.1.3"
 ```
 
 ```scala
@@ -55,7 +55,7 @@ This module is the Cats Effect backend for [`kyo-compat`](https://github.com/get
 Direct use:
 
 ```scala
-libraryDependencies += "io.github.netherite-systems" %%% "kyo-compat-ce" % "0.1.2"
+libraryDependencies += "io.github.netherite-systems" %%% "kyo-compat-ce" % "0.1.3"
 ```
 
 With `kyo-compat-plugin`, declare it as an external backend. The name `ce` matches the backend Kyo removed, so existing `-ce` artifact suffixes stay the same:
@@ -68,7 +68,7 @@ val CeLib = CompatBackendAxis.external(
     Set("jvm", "js", "native"),
     "io.github.netherite-systems",
     "kyo-compat-ce",
-    "0.1.2"
+    "0.1.3"
 )
 
 lazy val myLib = (projectMatrix in file("my-lib"))

@@ -17,13 +17,13 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
         Async.fromFuture(v.unsafeToFuture())
 
     def runKyo(v: => Unit < (Abort[Nothing] & Async)): Unit < Async =
-        Async.fromFuture(KyoToCats.run(v).unsafeToFuture())
+        Async.fromFuture(Cats.run(v).unsafeToFuture())
 
     "fibers" - {
         "nested Kyo in Cats" in runKyo {
-            CatsToKyo.get(CatsIO.defer {
+            Cats.get(CatsIO.defer {
                 val kyoComputation = Fiber.initUnscoped(42).map(_.get)
-                KyoToCats.run(kyoComputation)
+                Cats.run(kyoComputation)
             }).map(v => assert(v == 42))
         }
     }
@@ -60,7 +60,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     val started = new CountDownLatch(1)
                     val done    = new CountDownLatch(1)
                     for
-                        f <- KyoToCats.run(kyoLoop(started, done)).start
+                        f <- Cats.run(kyoLoop(started, done)).start
                         _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "loop did not start"))
                         _ <- f.cancel
                         r <- f.join
@@ -74,11 +74,11 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     val done    = new CountDownLatch(2)
                     val v       =
                         Async.zip[Throwable, Unit, Unit, Any](
-                            CatsToKyo.get(catsLoop(started, done)),
+                            Cats.get(catsLoop(started, done)),
                             kyoLoop(started, done)
                         )
                     for
-                        f <- KyoToCats.run(v).start
+                        f <- Cats.run(v).start
                         _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
                         _ <- f.cancel
                         r <- f.join
@@ -91,8 +91,8 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     val started        = new CountDownLatch(2)
                     val done           = new CountDownLatch(2)
                     def parallelEffect =
-                        KyoToCats.run {
-                            val loop1 = CatsToKyo.get(catsLoop(started, done))
+                        Cats.run {
+                            val loop1 = Cats.get(catsLoop(started, done))
                             val loop2 = kyoLoop(started, done)
                             Async.zip[Throwable, Unit, Unit, Any](loop1, loop2)
                         }
@@ -110,8 +110,8 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     val started    = new CountDownLatch(2)
                     val done       = new CountDownLatch(2)
                     def raceEffect =
-                        KyoToCats.run {
-                            val loop1 = CatsToKyo.get(catsLoop(started, done))
+                        Cats.run {
+                            val loop1 = Cats.get(catsLoop(started, done))
                             val loop2 = kyoLoop(started, done)
                             Async.race[Throwable, Unit, Any](loop1, loop2)
                         }
@@ -131,7 +131,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
     "F-generic bridges" - {
         "runF generic to IO" in runCatsIO {
             val kyoWork: Int < (Abort[Throwable] & Async) = Async.delay(1.millis)(42)
-            KyoToCats.runF[CatsIO, Int](kyoWork).map(v => assert(v == 42))
+            Cats.runF[CatsIO, Int](kyoWork).map(v => assert(v == 42))
         }
 
         "runF generic to EitherT" in runCatsIO {
@@ -139,7 +139,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
             type Eith[A] = EitherT[CatsIO, Throwable, A]
             val kyoWork: Int < (Abort[Throwable] & Async) = 99
             val eff: Eith[Int]                            =
-                KyoToCats.runF[Eith, Int](kyoWork)
+                Cats.runF[Eith, Int](kyoWork)
             eff.value.flatMap {
                 case Right(v) => CatsIO(assert(v == 99))
                 case Left(e)  => CatsIO.raiseError(e)
@@ -149,7 +149,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
         "runF maps Abort.fail to F error" in runCatsIO {
             val boom                                      = new RuntimeException("kyo abort")
             val kyoWork: Int < (Abort[Throwable] & Async) = Abort.fail(boom)
-            KyoToCats.runF[CatsIO, Int](kyoWork).attempt.map {
+            Cats.runF[CatsIO, Int](kyoWork).attempt.map {
                 case Left(ex) => assert(ex == boom)
                 case Right(v) => fail(s"expected error, got $v")
             }
@@ -157,8 +157,8 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
 
         "runF maps Kyo panic to F error" in runCatsIO {
             val boom                                       = new RuntimeException("kyo panic")
-            val kyoPanic: Int < (Abort[Throwable] & Async) = CatsToKyo.get(CatsIO.raiseError[Int](boom))
-            KyoToCats.runF[CatsIO, Int](kyoPanic).attempt.map {
+            val kyoPanic: Int < (Abort[Throwable] & Async) = Cats.get(CatsIO.raiseError[Int](boom))
+            Cats.runF[CatsIO, Int](kyoPanic).attempt.map {
                 case Left(ex) => assert(ex == boom)
                 case Right(v) => fail(s"expected error, got $v")
             }
@@ -173,8 +173,8 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     CatsDispatcher.parallel[CatsIO].use { disp =>
                         given CatsDispatcher[CatsIO] = disp
                         def effect                   =
-                            KyoToCats.run {
-                                val looped = CatsToKyo.lift(CatsIO(started.countDown()) >> CatsIO.never.guarantee(CatsIO(done.countDown())))
+                            Cats.run {
+                                val looped = Cats.lift(CatsIO(started.countDown()) >> CatsIO.never.guarantee(CatsIO(done.countDown())))
                                 Async.zip[Throwable, Unit, Unit, Any](looped, Async.never[Unit])
                             }
                         for
@@ -192,23 +192,23 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
     }
 
     "minimal typeclasses" - {
-        import kyo.KyoToCats.given
+        import kyo.Cats.given
 
         def runKyoT(v: => Unit < (Abort[Throwable] & Async)): Unit < Async =
-            Async.fromFuture(KyoToCats.run(v).unsafeToFuture())
+            Async.fromFuture(Cats.run(v).unsafeToFuture())
 
         "Async summon resolves Sync/Temporal bounds" in runKyoT {
             def needsSync[F[_]](using cats.effect.kernel.Sync[F]): F[Int]   = summon[cats.effect.kernel.Sync[F]].pure(3)
             def needsAsync[F[_]](using cats.effect.kernel.Async[F]): F[Int] = summon[cats.effect.kernel.Async[F]].pure(4)
             for
-                a <- needsSync[KyoToCats.Suspend]
-                b <- needsAsync[KyoToCats.Suspend]
+                a <- needsSync[Cats.Suspend]
+                b <- needsAsync[Cats.Suspend]
             yield assert(a == 3 && b == 4)
             end for
         }
 
         "MonadError recovers Failure and Panic" in runKyoT {
-            val F                                             = summon[cats.effect.kernel.Async[KyoToCats.Suspend]]
+            val F                                             = summon[cats.effect.kernel.Async[Cats.Suspend]]
             val fromFailure: Int < (Abort[Throwable] & Async) = F.raiseError[Int](new RuntimeException("f"))
             val fromAbort: Int < (Abort[Throwable] & Async)   = Abort.fail(new RuntimeException("q"))
             for
@@ -221,13 +221,13 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
         }
 
         "handleErrorWith recovers Panic" in runKyoT {
-            val F                                 = summon[cats.effect.kernel.Async[KyoToCats.Suspend]]
-            val panicking: KyoToCats.Suspend[Int] = CatsToKyo.get(CatsIO.raiseError[Int](new RuntimeException("boom")))
+            val F                            = summon[cats.effect.kernel.Async[Cats.Suspend]]
+            val panicking: Cats.Suspend[Int] = Cats.get(CatsIO.raiseError[Int](new RuntimeException("boom")))
             Abort.run[Throwable](F.handleErrorWith(panicking)(_ => 7)).map(r => assert(r == Result.succeed(7)))
         }
 
         "start and join through instance" in runKyoT {
-            val F = summon[cats.effect.kernel.Async[KyoToCats.Suspend]]
+            val F = summon[cats.effect.kernel.Async[Cats.Suspend]]
             for
                 fib <- F.start(F.pure(42))
                 v   <- fib.joinWithNever
@@ -236,12 +236,12 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
         }
 
         "async roundtrip through instance" in runKyoT {
-            val F = summon[cats.effect.kernel.Async[KyoToCats.Suspend]]
+            val F = summon[cats.effect.kernel.Async[Cats.Suspend]]
             F.async_[Int](cb => cb(Right(5))).map(v => assert(v == 5))
         }
 
         "Ref/Deferred roundtrip through instance" in runKyoT {
-            val F = summon[cats.effect.kernel.Async[KyoToCats.Suspend]]
+            val F = summon[cats.effect.kernel.Async[Cats.Suspend]]
             for
                 ref <- F.ref(0)
                 _   <- ref.update(_ + 1)
@@ -254,7 +254,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
         }
 
         "sleep/canceled/uncancelable via instance" in runKyoT {
-            val F = summon[cats.effect.kernel.Async[KyoToCats.Suspend]]
+            val F = summon[cats.effect.kernel.Async[Cats.Suspend]]
             for
                 _ <- F.sleep(scala.concurrent.duration.FiniteDuration(1, "ms"))
                 _ <- F.uncancelable(_ => 5)
@@ -272,7 +272,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 Scope.acquireRelease(Sync.defer { acquired.incrementAndGet(); 42 })((_: Int) =>
                     Sync.defer { released.incrementAndGet(); () }
                 )
-            KyoToCats.runResource[CatsIO, Int](scoped).use { v =>
+            Cats.runResource[CatsIO, Int](scoped).use { v =>
                 CatsIO(assert(v == 42)) >> CatsIO(assert(acquired.get() == 1)) >> CatsIO(assert(released.get() == 0))
             } >> CatsIO(assert(released.get() == 1))
         }
@@ -286,7 +286,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     a <- scoped(1)
                     b <- scoped(2)
                 yield (a, b)
-            KyoToCats.runResource[CatsIO, (Int, Int)](combined).use { case (a, b) =>
+            Cats.runResource[CatsIO, (Int, Int)](combined).use { case (a, b) =>
                 CatsIO(assert(a == 1 && b == 2))
             } >> CatsIO(assert(released.get() == 2))
         }
@@ -294,7 +294,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
         "scoped value composes with fibers" in runCatsIO {
             val scoped: Int < (Scope & Abort[Throwable] & Async) =
                 Scope.acquireRelease(Sync.defer(1))((_: Int) => Sync.defer(()))
-            KyoToCats.runResource[CatsIO, Int] {
+            Cats.runResource[CatsIO, Int] {
                 for
                     a <- scoped
                     b <- Fiber.initUnscoped(2).map(_.get)
@@ -305,7 +305,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
         "Abort.fail becomes Resource error" in runCatsIO {
             val boom                                             = new RuntimeException("kyo abort")
             val scoped: Int < (Scope & Abort[Throwable] & Async) = Abort.fail(boom)
-            KyoToCats.runResource[CatsIO, Int](scoped).use(_ => CatsIO.unit).attempt.map {
+            Cats.runResource[CatsIO, Int](scoped).use(_ => CatsIO.unit).attempt.map {
                 case Left(ex) => assert(ex == boom)
                 case Right(_) => fail("expected error")
             }
@@ -313,8 +313,8 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
 
         "panic becomes Resource error" in runCatsIO {
             val boom                                             = new RuntimeException("kyo panic")
-            val scoped: Int < (Scope & Abort[Throwable] & Async) = CatsToKyo.get(CatsIO.raiseError[Int](boom))
-            KyoToCats.runResource[CatsIO, Int](scoped).use(_ => CatsIO.unit).attempt.map {
+            val scoped: Int < (Scope & Abort[Throwable] & Async) = Cats.get(CatsIO.raiseError[Int](boom))
+            Cats.runResource[CatsIO, Int](scoped).use(_ => CatsIO.unit).attempt.map {
                 case Left(ex) => assert(ex == boom)
                 case Right(_) => fail("expected error")
             }
@@ -325,7 +325,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
             val released                                         = new AtomicInteger(0)
             val scoped: Int < (Scope & Abort[Throwable] & Async) =
                 Scope.acquireRelease(Sync.defer(7))((_: Int) => Sync.defer { released.incrementAndGet(); () })
-            KyoToCats.runResource[CatsIO, Int](scoped).use(_ => CatsIO.raiseError[Unit](boom)).attempt.flatMap {
+            Cats.runResource[CatsIO, Int](scoped).use(_ => CatsIO.raiseError[Unit](boom)).attempt.flatMap {
                 case Left(ex) => CatsIO(assert(ex == boom)) >> CatsIO(assert(released.get() == 1))
                 case Right(_) => CatsIO(fail("expected error"))
             }
@@ -336,7 +336,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
             type Eith[A] = EitherT[CatsIO, Throwable, A]
             val scoped: Int < (Scope & Abort[Throwable] & Async) =
                 Scope.acquireRelease(Sync.defer(99))((_: Int) => Sync.defer(()))
-            val res: CatsResource[Eith, Int] = KyoToCats.runResource[Eith, Int](scoped)
+            val res: CatsResource[Eith, Int] = Cats.runResource[Eith, Int](scoped)
             res.use(v => EitherT.liftF(CatsIO(assert(v == 99)))).value.flatMap {
                 case Right(_) => CatsIO.unit
                 case Left(e)  => CatsIO.raiseError(e)
@@ -358,7 +358,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     a <- scopedOk
                     b <- scopedFail
                 yield a + b
-            KyoToCats.runResource[CatsIO, Int](combined).use(_ => CatsIO.unit).attempt.flatMap {
+            Cats.runResource[CatsIO, Int](combined).use(_ => CatsIO.unit).attempt.flatMap {
                 case Left(ex) =>
                     CatsIO(assert(ex == boom)) >>
                         CatsIO(assert(releasedOk.get() == 1, "prior scope was not released")) >>
@@ -375,9 +375,9 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
             val combined: Int < (Scope & Abort[Throwable] & Async) =
                 for
                     a <- scopedOk
-                    b <- CatsToKyo.get(CatsIO.raiseError[Int](boom))
+                    b <- Cats.get(CatsIO.raiseError[Int](boom))
                 yield a + b
-            KyoToCats.runResource[CatsIO, Int](combined).use(_ => CatsIO.unit).attempt.flatMap {
+            Cats.runResource[CatsIO, Int](combined).use(_ => CatsIO.unit).attempt.flatMap {
                 case Left(ex) =>
                     CatsIO(assert(ex == boom)) >>
                         CatsIO(assert(releasedOk.get() == 1, "prior scope was not released"))
@@ -394,7 +394,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 Scope.acquireRelease(Sync.defer(1))((_: Int) =>
                     Sync.defer { released.incrementAndGet(); () }.andThen(Abort.fail(releaseBoom))
                 )
-            KyoToCats.runResource[CatsIO, Int](scoped).use(v => CatsIO(assert(v == 1))).attempt.flatMap {
+            Cats.runResource[CatsIO, Int](scoped).use(v => CatsIO(assert(v == 1))).attempt.flatMap {
                 case Right(_) => CatsIO(assert(released.get() == 1, "release must have run"))
                 case Left(ex) => CatsIO(fail(s"expected use to succeed despite release failure, got $ex"))
             }
@@ -404,7 +404,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
             val released                                         = new AtomicInteger(0)
             val scoped: Int < (Scope & Abort[Throwable] & Async) =
                 Scope.acquireRelease(Sync.defer(5))((_: Int) => Async.delay(20.millis)(released.incrementAndGet()).map(_ => ()))
-            KyoToCats.runResource[CatsIO, Int](scoped).use(v => CatsIO(assert(v == 5))) >>
+            Cats.runResource[CatsIO, Int](scoped).use(v => CatsIO(assert(v == 5))) >>
                 CatsIO(assert(released.get() == 1, "async release was not awaited"))
         }
 
@@ -421,7 +421,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     a <- scoped1
                     b <- scoped2
                 yield (a, b)
-            KyoToCats.runResource[CatsIO, (Int, Int)](combined).use { case (a, b) =>
+            Cats.runResource[CatsIO, (Int, Int)](combined).use { case (a, b) =>
                 CatsIO(assert(a == 1 && b == 2))
             } >> CatsIO {
                 assert(counter.get() == 2, "each release must run exactly once")
@@ -436,7 +436,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 Scope.acquireRelease(Sync.defer { acquired.incrementAndGet(); 42 })((_: Int) =>
                     Sync.defer { released.incrementAndGet(); () }
                 )
-            val res = KyoToCats.runResource[CatsIO, Int](scoped)
+            val res = Cats.runResource[CatsIO, Int](scoped)
             res.use(v => CatsIO(assert(v == 42))) >>
                 res.use(v => CatsIO(assert(v == 42))) >>
                 CatsIO {
@@ -450,7 +450,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
             val finalized                                        = new AtomicInteger(0)
             val scoped: Int < (Scope & Abort[Throwable] & Async) =
                 Scope.acquireRelease(Sync.defer(41))((_: Int) => Sync.defer { released.incrementAndGet(); () })
-            val mapped        = KyoToCats.runResource[CatsIO, Int](scoped).map(_ + 1)
+            val mapped        = Cats.runResource[CatsIO, Int](scoped).map(_ + 1)
             val withFinalizer = mapped.onFinalize(CatsIO { finalized.incrementAndGet(); () })
             withFinalizer.use(v => CatsIO(assert(v == 42))) >> CatsIO {
                 assert(released.get() == 1, "Kyo release must run")
@@ -464,8 +464,8 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 Scope.acquireRelease(Sync.defer(i))((_: Int) => Sync.defer { released.incrementAndGet(); () })
             val combined: CatsResource[CatsIO, Int] =
                 for
-                    a <- KyoToCats.runResource[CatsIO, Int](scoped(1))
-                    b <- KyoToCats.runResource[CatsIO, Int](scoped(2))
+                    a <- Cats.runResource[CatsIO, Int](scoped(1))
+                    b <- Cats.runResource[CatsIO, Int](scoped(2))
                 yield a + b
             combined.use(v => CatsIO(assert(v == 3))) >>
                 CatsIO(assert(released.get() == 2, "both nested resources must release"))
@@ -477,7 +477,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 val released                                          = new CountDownLatch(1)
                 val scoped: Unit < (Scope & Abort[Throwable] & Async) =
                     Scope.acquireRelease(Sync.defer(started.countDown()))(_ => Sync.defer(released.countDown())).andThen(Async.never[Unit])
-                val res = KyoToCats.runResource[CatsIO, Unit](scoped)
+                val res = Cats.runResource[CatsIO, Unit](scoped)
                 for
                     f <- res.use(_ => CatsIO.never).start
                     _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "acquire did not start"))
@@ -496,7 +496,7 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                         _ <- Scope.acquireRelease(Sync.defer(acquired.countDown()))(_ => Sync.defer(released.countDown()))
                         _ <- Async.never[Unit]
                     yield ()
-                val res = KyoToCats.runResource[CatsIO, Unit](scoped)
+                val res = Cats.runResource[CatsIO, Unit](scoped)
                 for
                     f <- res.use(_ => CatsIO.unit).start
                     _ <- CatsIO(assert(acquired.await(5, TimeUnit.SECONDS), "first acquire did not complete"))

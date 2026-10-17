@@ -3,18 +3,18 @@
 Bidirectional interop between Kyo and Cats Effect. JVM and Scala.js.
 
 ```scala
-libraryDependencies += "io.github.netherite-systems" %%% "kyo-cats" % "0.1.2"
+libraryDependencies += "io.github.netherite-systems" %%% "kyo-cats" % "0.1.3"
 ```
 
-| Direction  | Method                   | Shape                                                                |
-| ---------- | ------------------------ | -------------------------------------------------------------------- |
-| Cats → Kyo | `CatsToKyo.get`          | `CatsIO[A] => A < (Abort[Nothing] & Async)`                          |
-| Cats → Kyo | `CatsToKyo.lift`         | `F[A] => A < (Abort[Nothing] & Async)`, needs `Dispatcher[F]`        |
-| Cats → Kyo | `CatsToKyo.liftResource` | `Resource[F, A] => A < (Scope & Abort[Nothing] & Async)`             |
-| Kyo → Cats | `KyoToCats.run`          | `A < (Abort[Throwable] & Async) => CatsIO[A]`                        |
-| Kyo → Cats | `KyoToCats.runF`         | `A < (Abort[Throwable] & Async) => F[A]`, needs `Async[F]`           |
-| Kyo → Cats | `KyoToCats.runResource`  | `A < (Scope & Abort[Throwable] & Async) => Resource[F, A]`           |
-| Instance   | `import KyoToCats.given` | `Async[Suspend]` where `Suspend[A] = A < (Abort[Throwable] & Async)` |
+| Direction  | Method              | Shape                                                        |
+| ---------- | ------------------- | ------------------------------------------------------------ |
+| Cats → Kyo | `Cats.get`          | `CatsIO[A] => A < (Abort[Nothing] & Async)`                  |
+| Cats → Kyo | `Cats.lift`         | `F[A] => A < (Abort[Nothing] & Async)`, needs `Dispatcher[F]` |
+| Cats → Kyo | `Cats.liftResource` | `Resource[F, A] => A < (Scope & Abort[Nothing] & Async)`      |
+| Kyo → Cats | `Cats.run`          | `A < (Abort[Throwable] & Async) => CatsIO[A]`                 |
+| Kyo → Cats | `Cats.runF`         | `A < (Abort[Throwable] & Async) => F[A]`, needs `Async[F]`    |
+| Kyo → Cats | `Cats.runResource`  | `A < (Scope & Abort[Throwable] & Async) => Resource[F, A]`    |
+| Instance   | `import Cats.given` | `Async[Cats.Suspend]`                                        |
 
 ## Cats → Kyo
 
@@ -24,12 +24,12 @@ import kyo.*
 
 // Plain IO. Argument is by-name, runs when the Kyo computation runs.
 val v: Int < (Abort[Nothing] & Async) =
-    CatsToKyo.get(CatsIO.pure(10))
+    Cats.get(CatsIO.pure(10))
 
 // Mix with Kyo in one for-comprehension.
 val doubled: Int < (Abort[Nothing] & Async) =
     for
-        a <- CatsToKyo.get(CatsIO.pure(10))
+        a <- Cats.get(CatsIO.pure(10))
         b <- Fiber.initUnscoped(2).map(_.get)
     yield a * b
 ```
@@ -41,8 +41,8 @@ import cats.effect.std.Dispatcher as CatsDispatcher
 
 CatsDispatcher.parallel[CatsIO].use { disp =>
     given CatsDispatcher[CatsIO] = disp
-    val v: Int < (Abort[Nothing] & Async) = CatsToKyo.lift(CatsIO.pure(7))
-    KyoToCats.run(v)
+    val v: Int < (Abort[Nothing] & Async) = Cats.lift(CatsIO.pure(7))
+    Cats.run(v)
 }
 ```
 
@@ -55,20 +55,20 @@ import kyo.*
 val kyoWork: Int < (Abort[Throwable] & Async) =
     Async.delay(10.millis)(42)
 
-val asIO: CatsIO[Int] = KyoToCats.run(kyoWork)
+val asIO: CatsIO[Int] = Cats.run(kyoWork)
 
 // Generic F[_], needs Async[F]. Same for Resource.
-val asGeneric: CatsIO[Int] = KyoToCats.runF[CatsIO, Int](kyoWork)
+val asGeneric: CatsIO[Int] = Cats.runF[CatsIO, Int](kyoWork)
 ```
 
 Only `Abort[Throwable] & Async` may be pending. Handle anything else first:
 
 ```scala
 val withEnv: Int < (Env[Config] & Abort[Throwable] & Async) = ???
-val asIO: CatsIO[Int] = KyoToCats.run(Env.run(Config(1000))(withEnv))
+val asIO: CatsIO[Int] = Cats.run(Env.run(Config(1000))(withEnv))
 ```
 
-`import kyo.KyoToCats.given` provides `Async[Suspend]` so Kyo fills `F[_]` bounds in Cats libraries (http4s, fs2, doobie). Prefer native Kyo combinators inside Kyo code; use the instance at the boundary.
+`import kyo.Cats.given` provides `Async[Cats.Suspend]` so Kyo fills `F[_]` bounds in Cats libraries (http4s, fs2, doobie). Prefer native Kyo combinators inside Kyo code; use the instance at the boundary.
 
 ## Resources
 
@@ -83,14 +83,14 @@ import kyo.*
 val scoped: Int < (Scope & Abort[Throwable] & Async) =
     Scope.acquireRelease(Sync.defer(42))(_ => Sync.defer(()))
 
-val res: CatsResource[CatsIO, Int] = KyoToCats.runResource(scoped)
+val res: CatsResource[CatsIO, Int] = Cats.runResource(scoped)
 res.use(v => CatsIO.println(s"got $v"))
 
 // Composes with Cats DSL
-KyoToCats.runResource(scoped).map(_ + 1).use(_ => CatsIO.unit)
+Cats.runResource(scoped).map(_ + 1).use(_ => CatsIO.unit)
 for
-    a <- KyoToCats.runResource(scoped)
-    b <- KyoToCats.runResource(scoped)
+    a <- Cats.runResource(scoped)
+    b <- Cats.runResource(scoped)
 yield a + b
 ```
 
@@ -104,10 +104,10 @@ CatsDispatcher.parallel[CatsIO].use { disp =>
     given CatsDispatcher[CatsIO] = disp
     val resource: CatsResource[CatsIO, Int] =
         CatsResource.make(CatsIO.pure(42))(_ => CatsIO.unit)
-    KyoToCats.run {
+    Cats.run {
         Scope.run {
             for
-                a <- CatsToKyo.liftResource(resource)
+                a <- Cats.liftResource(resource)
                 b <- Fiber.initUnscoped(2).map(_.get)
             yield a + b
         }
