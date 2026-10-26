@@ -6,8 +6,6 @@ Kyo dropped its Typelevel interop in [1.0.0-RC6](https://github.com/getkyo/kyo/p
 
 The code is derived from Kyo and is released under the same [Apache-2.0](LICENSE.txt) license.
 
-Last updated: 2026-10-26
-
 | Module               | Platforms                   | Scala          | What it does                                                                 |
 | -------------------- | --------------------------- | -------------- | ---------------------------------------------------------------------------- |
 | `kyo-cats`           | JVM, Scala.js               | 3.9.0          | Lift `cats.effect.IO` into Kyo and run Kyo as `IO`, incl. `Scope`/`Resource` |
