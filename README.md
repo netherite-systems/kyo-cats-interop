@@ -6,11 +6,21 @@ Kyo dropped its Typelevel interop in [1.0.0-RC6](https://github.com/getkyo/kyo/p
 
 The code is derived from Kyo and is released under the same [Apache-2.0](LICENSE.txt) license.
 
-| Module               | Platforms                   | What it does                                                                 |
-| -------------------- | --------------------------- | ---------------------------------------------------------------------------- |
-| `kyo-cats`           | JVM, Scala.js               | Lift `cats.effect.IO` into Kyo and run Kyo as `IO`, incl. `Scope`/`Resource` |
-| `kyo-scheduler-cats` | JVM                         | Run Cats Effect on `kyo-scheduler`                                           |
-| `kyo-compat-ce`      | JVM, Scala.js, Scala Native | `kyo.compat` backend on `cats.effect.IO` and fs2                             |
+| Module               | Platforms                   | Scala          | What it does                                                                 |
+| -------------------- | --------------------------- | -------------- | ---------------------------------------------------------------------------- |
+| `kyo-cats`           | JVM, Scala.js               | 3.9.0          | Lift `cats.effect.IO` into Kyo and run Kyo as `IO`, incl. `Scope`/`Resource` |
+| `kyo-scheduler-cats` | JVM                         | 3.9.0, 2.13.18 | Run Cats Effect on `kyo-scheduler`                                           |
+| `kyo-compat-ce`      | JVM, Scala.js, Scala Native | 3.9.0          | `kyo.compat` backend on `cats.effect.IO` and fs2                             |
+
+Built against:
+
+| Dependency  | Version   |
+| ----------- | --------- |
+| Kyo         | 1.0.0-RC7 |
+| Cats Effect | 3.7.1     |
+| fs2         | 3.14.0    |
+
+`fs2` is used only by `kyo-compat-ce`. On Scala.js, `kyo-compat-ce` also depends on [`scala-java-time`](https://github.com/cquiroz/scala-java-time) 2.7.0 because Scala.js does not ship `java.time`. `kyo-scheduler-cats` is the only module also built for Scala 2.13 (with `-Xsource:3`).
 
 ## kyo-cats
 
@@ -77,4 +87,4 @@ lazy val myLib = (projectMatrix in file("my-lib"))
 
 `CIO.async` registers an `IO.async` cancellation token, so a timeout or an outer cancel can stop waiting on a callback. Cancelling that wait does not undo the external operation. `CIO.timeout` uses `Option`, so a successful `null` is `None`, the same result as a deadline. `CAtomicInt`, `CAtomicLong`, and `CAtomicBoolean` are separate opaque `Ref`s, each with its own arithmetic.
 
-The cross-binding conformance suite is the one bundled in `kyo-compat-plugin`, unpacked per platform with `compatConformance()`. Bumping the plugin version with `kyoVersion` replaces that suite.
+The cross-binding conformance suite is the one bundled in `kyo-compat-plugin`, unpacked per platform with `compatConformance()`. Bumping the plugin version with `kyoVersion` replaces that suite, so keep `kyo-compat-plugin` (in `project/plugins.sbt`) and `kyoVersion` (in `build.sbt`) on the same version.
