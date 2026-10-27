@@ -1,6 +1,6 @@
 {
-  "name": "terracotta-d92c8eb3-3af0-4748-9975-5ece1bd9b190",
+  "name": "terracotta-025a8913-e0b9-4960-8eea-e1f8b3cd8dfa",
   "image": "terracotta-opencode:latest",
   "workspaceFolder": "/work",
-  "workspaceMount": "source=workspaces/d92c8eb3-3af0-4748-9975-5ece1bd9b190,target=/work,type=bind"
+  "workspaceMount": "source=workspaces/025a8913-e0b9-4960-8eea-e1f8b3cd8dfa,target=/work,type=bind"
 }
