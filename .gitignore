@@ -11,3 +11,4 @@ null/
 
 .sonatype-credentials
 .sbt
+.devcontainer
