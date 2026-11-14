@@ -24,18 +24,14 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
     def runKyo(v: => Unit < (Abort[Nothing] & Async)): Unit < Async =
         Async.fromFuture(Cats.run(v).unsafeToFuture())
 
-    // Non-blocking latch wait: polls every 10ms up to 5s via Cats timer.
-    // Unlike blocking CountDownLatch.await, this never holds a compute
-    // thread, so Async.zip/race branches and finalizers can still run.
-    def awaitLatch(l: CountDownLatch, msg: String)(using kyo.test.AssertScope): CatsIO[Unit] =
-        def loop(remaining: Int): CatsIO[Unit] =
-            CatsIO(l.getCount() == 0).flatMap {
-                case true  => CatsIO(assert(l.getCount() == 0, msg))
-                case false =>
-                    if remaining <= 0 then CatsIO(assert(false, msg))
-                    else CatsIO.sleep(scala.concurrent.duration.FiniteDuration(10, "ms")) >> loop(remaining - 1)
-            }
-        loop(500)
+    def awaitLatch(latch: CountDownLatch, message: String)(using kyo.test.AssertScope): CatsIO[Unit] =
+        val pollInterval                            = scala.concurrent.duration.FiniteDuration(10, "ms")
+        val maxPolls                                = 500
+        def loop(remainingPolls: Int): CatsIO[Unit] =
+            if latch.getCount() == 0 then CatsIO(assert(latch.getCount() == 0, message))
+            else if remainingPolls <= 0 then CatsIO(assert(false, message))
+            else CatsIO.sleep(pollInterval) >> loop(remainingPolls - 1)
+        loop(maxPolls)
     end awaitLatch
 
     "fibers" - {

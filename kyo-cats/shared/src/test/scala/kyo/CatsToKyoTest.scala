@@ -25,15 +25,14 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
     def runKyo(v: => Unit < (Abort[Nothing] & Async)): Unit < Async =
         Async.fromFuture(Cats.run(v).unsafeToFuture())
 
-    // Non-blocking latch wait: polls every 10ms up to 5s via Async.sleep.
-    // Unlike blocking CountDownLatch.await, this never holds a Kyo worker,
-    // so Async.zip/race branches and finalizers can still run.
-    def awaitLatch(l: CountDownLatch, msg: String)(using kyo.test.AssertScope): Unit < Async =
-        def loop(remaining: Int): Unit < Async =
-            if l.getCount() == 0 then Sync.defer(assert(l.getCount() == 0, msg))
-            else if remaining <= 0 then Sync.defer(assert(false, msg))
-            else Async.sleep(10.millis).andThen(loop(remaining - 1))
-        loop(500)
+    def awaitLatch(latch: CountDownLatch, message: String)(using kyo.test.AssertScope): Unit < Async =
+        val pollInterval                            = 10.millis
+        val maxPolls                                = 500
+        def loop(remainingPolls: Int): Unit < Async =
+            if latch.getCount() == 0 then Sync.defer(assert(latch.getCount() == 0, message))
+            else if remainingPolls <= 0 then Sync.defer(assert(false, message))
+            else Async.sleep(pollInterval).andThen(loop(remainingPolls - 1))
+        loop(maxPolls)
     end awaitLatch
 
     "Abort ordering" - {
