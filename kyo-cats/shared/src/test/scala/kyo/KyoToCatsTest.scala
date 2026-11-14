@@ -4,7 +4,6 @@ import cats.effect.IO as CatsIO
 import cats.effect.kernel.Resource as CatsResource
 import cats.effect.unsafe.implicits.global
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kyo.*
 import kyo.internal.Platform
@@ -24,6 +23,20 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
 
     def runKyo(v: => Unit < (Abort[Nothing] & Async)): Unit < Async =
         Async.fromFuture(Cats.run(v).unsafeToFuture())
+
+    // Non-blocking latch wait: polls every 10ms up to 5s via Cats timer.
+    // Unlike blocking CountDownLatch.await, this never holds a compute
+    // thread, so Async.zip/race branches and finalizers can still run.
+    def awaitLatch(l: CountDownLatch, msg: String)(using kyo.test.AssertScope): CatsIO[Unit] =
+        def loop(remaining: Int): CatsIO[Unit] =
+            CatsIO(l.getCount == 0).flatMap {
+                case true  => CatsIO(assert(l.getCount == 0, msg))
+                case false =>
+                    if remaining <= 0 then CatsIO(assert(false, msg))
+                    else CatsIO.sleep(scala.concurrent.duration.FiniteDuration(10, "ms")) >> loop(remaining - 1)
+            }
+        loop(500)
+    end awaitLatch
 
     "fibers" - {
         "nested Kyo in Cats" in runKyo {
@@ -54,10 +67,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     val done    = new CountDownLatch(1)
                     for
                         f <- Cats.run(kyoLoop(started, done)).start
-                        _ <- CatsIO.blocking(assert(started.await(5, TimeUnit.SECONDS), "loop did not start"))
+                        _ <- awaitLatch(started, "loop did not start")
                         _ <- f.cancel
                         r <- f.join
-                        _ <- CatsIO.blocking(assert(done.await(5, TimeUnit.SECONDS), "finalizer did not run"))
+                        _ <- awaitLatch(done, "finalizer did not run")
                     yield assert(r.isCanceled)
                     end for
                 }
@@ -72,10 +85,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                         )
                     for
                         f <- Cats.run(v).start
-                        _ <- CatsIO.blocking(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- awaitLatch(started, "loops did not start")
                         _ <- f.cancel
                         r <- f.join
-                        _ <- CatsIO.blocking(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- awaitLatch(done, "finalizers did not run")
                     yield assert(r.isCanceled)
                     end for
                 }
@@ -91,10 +104,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                         }
                     for
                         f <- parallelEffect.start
-                        _ <- CatsIO.blocking(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- awaitLatch(started, "loops did not start")
                         _ <- f.cancel
                         r <- f.join
-                        _ <- CatsIO.blocking(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- awaitLatch(done, "finalizers did not run")
                     yield assert(r.isCanceled)
                     end for
                 }
@@ -110,10 +123,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                         }
                     for
                         f <- raceEffect.start
-                        _ <- CatsIO.blocking(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- awaitLatch(started, "loops did not start")
                         _ <- f.cancel
                         r <- f.join
-                        _ <- CatsIO.blocking(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- awaitLatch(done, "finalizers did not run")
                     yield assert(r.isCanceled)
                     end for
                 }
@@ -172,10 +185,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                             }
                         for
                             f <- effect.start
-                            _ <- CatsIO.blocking(assert(started.await(5, TimeUnit.SECONDS), "lifted effect did not start"))
+                            _ <- awaitLatch(started, "lifted effect did not start")
                             _ <- f.cancel
                             r <- f.join
-                            _ <- CatsIO.blocking(assert(done.await(5, TimeUnit.SECONDS), "lifted finalizer did not run"))
+                            _ <- awaitLatch(done, "lifted finalizer did not run")
                         yield assert(r.isCanceled)
                         end for
                     }
@@ -473,10 +486,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 val res = Cats.runResource[CatsIO, Unit](scoped)
                 for
                     f <- res.use(_ => CatsIO.never).start
-                    _ <- CatsIO.blocking(assert(started.await(5, TimeUnit.SECONDS), "acquire did not start"))
+                    _ <- awaitLatch(started, "acquire did not start")
                     _ <- f.cancel
                     r <- f.join
-                    _ <- CatsIO.blocking(assert(released.await(5, TimeUnit.SECONDS), "release did not run"))
+                    _ <- awaitLatch(released, "release did not run")
                 yield assert(r.isCanceled)
                 end for
             }
@@ -492,10 +505,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 val res = Cats.runResource[CatsIO, Unit](scoped)
                 for
                     f <- res.use(_ => CatsIO.unit).start
-                    _ <- CatsIO.blocking(assert(acquired.await(5, TimeUnit.SECONDS), "first acquire did not complete"))
+                    _ <- awaitLatch(acquired, "first acquire did not complete")
                     _ <- f.cancel
                     r <- f.join
-                    _ <- CatsIO.blocking(assert(released.await(5, TimeUnit.SECONDS), "prior scope was not released on acquire-cancel"))
+                    _ <- awaitLatch(released, "prior scope was not released on acquire-cancel")
                 yield assert(r.isCanceled)
                 end for
             }
