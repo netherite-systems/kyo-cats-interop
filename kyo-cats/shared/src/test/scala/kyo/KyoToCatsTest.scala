@@ -29,8 +29,8 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
     // thread, so Async.zip/race branches and finalizers can still run.
     def awaitLatch(l: CountDownLatch, msg: String)(using kyo.test.AssertScope): CatsIO[Unit] =
         def loop(remaining: Int): CatsIO[Unit] =
-            CatsIO(l.getCount == 0).flatMap {
-                case true  => CatsIO(assert(l.getCount == 0, msg))
+            CatsIO(l.getCount() == 0).flatMap {
+                case true  => CatsIO(assert(l.getCount() == 0, msg))
                 case false =>
                     if remaining <= 0 then CatsIO(assert(false, msg))
                     else CatsIO.sleep(scala.concurrent.duration.FiniteDuration(10, "ms")) >> loop(remaining - 1)
