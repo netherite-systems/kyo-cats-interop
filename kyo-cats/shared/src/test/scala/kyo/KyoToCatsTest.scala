@@ -30,26 +30,23 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
 
     "interrupts" - {
 
-        def kyoLoop(started: CountDownLatch, done: CountDownLatch): Unit < Sync =
-            def loop(i: Int): Unit < Sync =
-                Sync.defer {
-                    if i == 0 then
-                        Sync.defer(started.countDown()).andThen(loop(i + 1))
-                    else
-                        loop(i + 2)
-                }
+        def kyoLoop(started: CountDownLatch, done: CountDownLatch): Unit < Async =
+            def loop(i: Int): Unit < Async =
+                if i == 0 then
+                    Sync.defer(started.countDown()).andThen(Async.delay(1.millis)(()).andThen(loop(i + 1)))
+                else
+                    Async.delay(1.millis)(()).andThen(loop(i + 1))
             Sync.ensure(Sync.defer(done.countDown()))(loop(0))
         end kyoLoop
 
         def catsLoop(started: CountDownLatch, done: CountDownLatch): CatsIO[Unit] =
             def loop(i: Int): CatsIO[Unit] =
-                CatsIO.defer {
-                    if i == 0 then
-                        CatsIO(started.countDown())
-                            .flatMap(_ => loop(i + 1))
-                    else
-                        loop(i + 1)
-                }
+                if i == 0 then
+                    CatsIO(started.countDown()).flatMap(_ =>
+                        CatsIO.cede.flatMap(_ => CatsIO.sleep(scala.concurrent.duration.FiniteDuration(1, "ms")).flatMap(_ => loop(i + 1)))
+                    )
+                else
+                    CatsIO.cede.flatMap(_ => CatsIO.sleep(scala.concurrent.duration.FiniteDuration(1, "ms")).flatMap(_ => loop(i + 1)))
             loop(0).guarantee(CatsIO(done.countDown()))
         end catsLoop
 
