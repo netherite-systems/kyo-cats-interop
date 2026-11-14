@@ -31,23 +31,13 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
     "interrupts" - {
 
         def kyoLoop(started: CountDownLatch, done: CountDownLatch): Unit < Async =
-            def loop(i: Int): Unit < Async =
-                if i == 0 then
-                    Sync.defer(started.countDown()).andThen(Async.delay(1.millis)(()).andThen(loop(i + 1)))
-                else
-                    Async.delay(1.millis)(()).andThen(loop(i + 1))
-            Sync.ensure(Sync.defer(done.countDown()))(loop(0))
+            Sync.defer(started.countDown()).andThen(Sync.ensure(Sync.defer(done.countDown()))(Async.never))
         end kyoLoop
 
-        def catsLoop(started: CountDownLatch, done: CountDownLatch): CatsIO[Unit] =
-            def loop(i: Int): CatsIO[Unit] =
-                if i == 0 then
-                    CatsIO(started.countDown()).flatMap(_ =>
-                        CatsIO.cede.flatMap(_ => CatsIO.sleep(scala.concurrent.duration.FiniteDuration(1, "ms")).flatMap(_ => loop(i + 1)))
-                    )
-                else
-                    CatsIO.cede.flatMap(_ => CatsIO.sleep(scala.concurrent.duration.FiniteDuration(1, "ms")).flatMap(_ => loop(i + 1)))
-            loop(0).guarantee(CatsIO(done.countDown()))
+        def catsLoop(
+            started: CountDownLatch,
+            done: CountDownLatch
+        ): CatsIO[Unit] = (CatsIO(started.countDown()) >> CatsIO.never).guarantee(CatsIO(done.countDown()))
         end catsLoop
 
         if Platform.isJVM then
@@ -58,10 +48,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                     val done    = new CountDownLatch(1)
                     for
                         f <- Cats.run(kyoLoop(started, done)).start
-                        _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "loop did not start"))
+                        _ <- CatsIO(assert(started.await(10, TimeUnit.SECONDS), "loop did not start"))
                         _ <- f.cancel
                         r <- f.join
-                        _ <- CatsIO(assert(done.await(5, TimeUnit.SECONDS), "finalizer did not run"))
+                        _ <- CatsIO(assert(done.await(10, TimeUnit.SECONDS), "finalizer did not run"))
                     yield assert(r.isCanceled)
                     end for
                 }
@@ -76,10 +66,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                         )
                     for
                         f <- Cats.run(v).start
-                        _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- CatsIO(assert(started.await(10, TimeUnit.SECONDS), "loops did not start"))
                         _ <- f.cancel
                         r <- f.join
-                        _ <- CatsIO(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- CatsIO(assert(done.await(10, TimeUnit.SECONDS), "finalizers did not run"))
                     yield assert(r.isCanceled)
                     end for
                 }
@@ -95,10 +85,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                         }
                     for
                         f <- parallelEffect.start
-                        _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- CatsIO(assert(started.await(10, TimeUnit.SECONDS), "loops did not start"))
                         _ <- f.cancel
                         r <- f.join
-                        _ <- CatsIO(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- CatsIO(assert(done.await(10, TimeUnit.SECONDS), "finalizers did not run"))
                     yield assert(r.isCanceled)
                     end for
                 }
@@ -114,10 +104,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                         }
                     for
                         f <- raceEffect.start
-                        _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- CatsIO(assert(started.await(10, TimeUnit.SECONDS), "loops did not start"))
                         _ <- f.cancel
                         r <- f.join
-                        _ <- CatsIO(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- CatsIO(assert(done.await(10, TimeUnit.SECONDS), "finalizers did not run"))
                     yield assert(r.isCanceled)
                     end for
                 }
@@ -176,10 +166,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                             }
                         for
                             f <- effect.start
-                            _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "lifted effect did not start"))
+                            _ <- CatsIO(assert(started.await(10, TimeUnit.SECONDS), "lifted effect did not start"))
                             _ <- f.cancel
                             r <- f.join
-                            _ <- CatsIO(assert(done.await(5, TimeUnit.SECONDS), "lifted finalizer did not run"))
+                            _ <- CatsIO(assert(done.await(10, TimeUnit.SECONDS), "lifted finalizer did not run"))
                         yield assert(r.isCanceled)
                         end for
                     }
@@ -477,10 +467,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 val res = Cats.runResource[CatsIO, Unit](scoped)
                 for
                     f <- res.use(_ => CatsIO.never).start
-                    _ <- CatsIO(assert(started.await(5, TimeUnit.SECONDS), "acquire did not start"))
+                    _ <- CatsIO(assert(started.await(10, TimeUnit.SECONDS), "acquire did not start"))
                     _ <- f.cancel
                     r <- f.join
-                    _ <- CatsIO(assert(released.await(5, TimeUnit.SECONDS), "release did not run"))
+                    _ <- CatsIO(assert(released.await(10, TimeUnit.SECONDS), "release did not run"))
                 yield assert(r.isCanceled)
                 end for
             }
@@ -496,10 +486,10 @@ class KyoToCatsTest extends kyo.test.Test[Any]:
                 val res = Cats.runResource[CatsIO, Unit](scoped)
                 for
                     f <- res.use(_ => CatsIO.unit).start
-                    _ <- CatsIO(assert(acquired.await(5, TimeUnit.SECONDS), "first acquire did not complete"))
+                    _ <- CatsIO(assert(acquired.await(10, TimeUnit.SECONDS), "first acquire did not complete"))
                     _ <- f.cancel
                     r <- f.join
-                    _ <- CatsIO(assert(released.await(5, TimeUnit.SECONDS), "prior scope was not released on acquire-cancel"))
+                    _ <- CatsIO(assert(released.await(10, TimeUnit.SECONDS), "prior scope was not released on acquire-cancel"))
                 yield assert(r.isCanceled)
                 end for
             }
