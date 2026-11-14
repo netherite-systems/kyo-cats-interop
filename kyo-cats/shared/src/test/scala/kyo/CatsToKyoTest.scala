@@ -5,12 +5,17 @@ import cats.effect.kernel.Resource as CatsResource
 import cats.effect.std.Dispatcher as CatsDispatcher
 import cats.effect.unsafe.implicits.global
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kyo.*
 import kyo.internal.Platform
 
 class CatsToKyoTest extends kyo.test.Test[Any]:
+
+    // Timing-sensitive interrupt/latch leaves starve each other when run in parallel
+    // on CI (blocking CountDownLatch.await holds threads while Async.zip/race need
+    // threads to start both branches). Run sequentially, like kyo-core AsyncTest.
+    // See https://github.com/getkyo/kyo/blob/main/kyo-core/shared/src/test/scala/kyo/AsyncTest.scala
+    override def config = super.config.sequential
 
     // Run the body through the Cats Effect runtime, then bridge the resulting Future back into Kyo.
     // See https://typelevel.org/cats-effect/api/3.x/cats/effect/IO.html
@@ -19,6 +24,16 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
 
     def runKyo(v: => Unit < (Abort[Nothing] & Async)): Unit < Async =
         Async.fromFuture(Cats.run(v).unsafeToFuture())
+
+    def awaitLatch(latch: CountDownLatch, message: String)(using kyo.test.AssertScope): Unit < Async =
+        val pollInterval                            = 10.millis
+        val maxPolls                                = 500
+        def loop(remainingPolls: Int): Unit < Async =
+            if latch.getCount() == 0 then Sync.defer(assert(latch.getCount() == 0, message))
+            else if remainingPolls <= 0 then Sync.defer(assert(false, message))
+            else Async.sleep(pollInterval).andThen(loop(remainingPolls - 1))
+        loop(maxPolls)
+    end awaitLatch
 
     "Abort ordering" - {
         "kyo then cats" in runKyo {
@@ -94,27 +109,14 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
 
     "interrupts" - {
 
-        def kyoLoop(started: CountDownLatch, done: CountDownLatch): Unit < Sync =
-            def loop(i: Int): Unit < Sync =
-                Sync.defer {
-                    if i == 0 then
-                        Sync.defer(started.countDown()).andThen(loop(i + 1))
-                    else
-                        loop(i + 2)
-                }
-            Sync.ensure(Sync.defer(done.countDown()))(loop(0))
+        def kyoLoop(started: CountDownLatch, done: CountDownLatch): Unit < Async =
+            Sync.defer(started.countDown()).andThen(Sync.ensure(Sync.defer(done.countDown()))(Async.never))
         end kyoLoop
 
-        def catsLoop(started: CountDownLatch, done: CountDownLatch): CatsIO[Unit] =
-            def loop(i: Int): CatsIO[Unit] =
-                CatsIO.defer {
-                    if i == 0 then
-                        CatsIO(started.countDown())
-                            .flatMap(_ => loop(i + 1))
-                    else
-                        loop(i + 1)
-                }
-            loop(0).guarantee(CatsIO(done.countDown()))
+        def catsLoop(
+            started: CountDownLatch,
+            done: CountDownLatch
+        ): CatsIO[Unit] = (CatsIO(started.countDown()) >> CatsIO.never).guarantee(CatsIO(done.countDown()))
         end catsLoop
 
         if Platform.isJVM then
@@ -126,10 +128,10 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
                     val panic   = Result.Panic(new Exception)
                     for
                         f <- Fiber.initUnscoped(Cats.get(catsLoop(started, done)))
-                        _ <- Sync.defer(assert(started.await(5, TimeUnit.SECONDS), "loop did not start"))
+                        _ <- awaitLatch(started, "loop did not start")
                         _ <- f.interrupt(panic)
                         r <- f.getResult
-                        _ <- Sync.defer(assert(done.await(5, TimeUnit.SECONDS), "finalizer did not run"))
+                        _ <- awaitLatch(done, "finalizer did not run")
                     yield assert(r == panic)
                     end for
                 }
@@ -144,10 +146,10 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
                         )
                     for
                         f <- Fiber.initUnscoped(v)
-                        _ <- Sync.defer(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- awaitLatch(started, "loops did not start")
                         _ <- f.interrupt
                         r <- f.getResult
-                        _ <- Sync.defer(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- awaitLatch(done, "finalizers did not run")
                     yield assert(r.isPanic)
                     end for
                 }
@@ -162,10 +164,10 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
                     end parallelEffect
                     for
                         f <- Fiber.initUnscoped(parallelEffect)
-                        _ <- Sync.defer(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- awaitLatch(started, "loops did not start")
                         _ <- f.interrupt
                         r <- f.getResult
-                        _ <- Sync.defer(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- awaitLatch(done, "finalizers did not run")
                     yield assert(r.isPanic)
                     end for
                 }
@@ -180,10 +182,10 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
                     end raceEffect
                     for
                         f <- Fiber.initUnscoped(raceEffect)
-                        _ <- Sync.defer(assert(started.await(5, TimeUnit.SECONDS), "loops did not start"))
+                        _ <- awaitLatch(started, "loops did not start")
                         _ <- f.interrupt
                         r <- f.getResult
-                        _ <- Sync.defer(assert(done.await(5, TimeUnit.SECONDS), "finalizers did not run"))
+                        _ <- awaitLatch(done, "finalizers did not run")
                     yield assert(r.isPanic)
                     end for
                 }
@@ -252,10 +254,10 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
                             given CatsDispatcher[CatsIO] = alloc._1
                             for
                                 f <- Fiber.initUnscoped(Cats.lift(catsWork))
-                                _ <- Sync.defer(assert(started.await(5, TimeUnit.SECONDS), "lifted effect did not start"))
+                                _ <- awaitLatch(started, "lifted effect did not start")
                                 _ <- f.interrupt(panic)
                                 r <- f.getResult
-                                _ <- Sync.defer(assert(done.await(5, TimeUnit.SECONDS), "lifted finalizer did not run"))
+                                _ <- awaitLatch(done, "lifted finalizer did not run")
                             yield r
                             end for
                         _ <- Cats.get(alloc._2)
@@ -549,6 +551,7 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
             // hits Kyo's documented Scope.acquireRelease gap, so that shape is not covered here.
             "interrupting Kyo during use releases" in runKyo {
                 val started                        = new CountDownLatch(1)
+                val inUse                          = new CountDownLatch(1)
                 val released                       = new CountDownLatch(1)
                 def res: CatsResource[CatsIO, Int] =
                     CatsResource.make(CatsIO { started.countDown(); 1 })(_ => CatsIO { released.countDown(); () })
@@ -558,11 +561,14 @@ class CatsToKyoTest extends kyo.test.Test[Any]:
                     r     <-
                         given CatsDispatcher[CatsIO] = alloc._1
                         for
-                            f <- Fiber.initUnscoped(Scope.run(Cats.liftResource(res).andThen(Async.never[Unit])))
-                            _ <- Sync.defer(assert(started.await(5, TimeUnit.SECONDS), "resource was not acquired"))
+                            f <- Fiber.initUnscoped(Scope.run(
+                                Cats.liftResource(res).andThen(Sync.defer(inUse.countDown()).andThen(Async.never[Unit]))
+                            ))
+                            _ <- awaitLatch(started, "resource was not acquired")
+                            _ <- awaitLatch(inUse, "use phase was not entered")
                             _ <- f.interrupt(panic)
                             r <- f.getResult
-                            _ <- Sync.defer(assert(released.await(5, TimeUnit.SECONDS), "release did not run"))
+                            _ <- awaitLatch(released, "release did not run")
                         yield r
                         end for
                     _ <- Cats.get(alloc._2)
