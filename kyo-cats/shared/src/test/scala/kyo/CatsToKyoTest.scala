@@ -12,6 +12,12 @@ import kyo.internal.Platform
 
 class CatsToKyoTest extends kyo.test.Test[Any]:
 
+    // Timing-sensitive interrupt/latch leaves starve each other when run in parallel
+    // on CI (blocking CountDownLatch.await holds threads while Async.zip/race need
+    // threads to start both branches). Run sequentially, like kyo-core AsyncTest.
+    // See https://github.com/getkyo/kyo/blob/main/kyo-core/shared/src/test/scala/kyo/AsyncTest.scala
+    override def config = super.config.sequential
+
     // Run the body through the Cats Effect runtime, then bridge the resulting Future back into Kyo.
     // See https://typelevel.org/cats-effect/api/3.x/cats/effect/IO.html
     def runCatsIO[T](v: CatsIO[T]): T < Async =
